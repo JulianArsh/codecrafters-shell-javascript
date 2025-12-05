@@ -5,9 +5,15 @@ const rl = readline.createInterface({
   output: process.stdout,
 });
 
-
+function prompt() {
   rl.question("$ ", (command) => {
+    // Print the "command not found" message
     console.log(`${command}: command not found`);
-    rl.close();
+    
+    // Loop back to prompt again
+    prompt();
   });
+}
 
+// Start the REPL
+prompt();
