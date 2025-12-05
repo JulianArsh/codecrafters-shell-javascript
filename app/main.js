@@ -7,6 +7,11 @@ const rl = readline.createInterface({
 
 function prompt() {
   rl.question("$ ", (command) => {
+    // Check if the command is "exit"
+    if (command === "exit") {
+      process.exit(0);
+    }
+    
     // Print the "command not found" message
     console.log(`${command}: command not found`);
     
