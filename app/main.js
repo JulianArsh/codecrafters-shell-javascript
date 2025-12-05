@@ -48,6 +48,7 @@ function parseCommandLine(commandLine) {
   let redirectOutput = null;
   let redirectError = null;
   let appendOutput = null;
+  let appendError = null;
   let i = 0;
   
   while (i < commandLine.length) {
@@ -305,7 +306,7 @@ function parseCommandLine(commandLine) {
     args.push(currentArg);
   }
   
-  return { args, redirectOutput, redirectError, appendOutput };
+  return { args, redirectOutput, redirectError, appendOutput, appendError };
 }
 
 function executeCommand(commandLine) {
@@ -315,6 +316,7 @@ function executeCommand(commandLine) {
   const redirectOutput = parsed.redirectOutput;
   const redirectError = parsed.redirectError;
   const appendOutput = parsed.appendOutput;
+  const appendError = parsed.appendError;
   
   if (parts.length === 0) {
     return;
@@ -336,34 +338,24 @@ function executeCommand(commandLine) {
     argv0: command,   // Set argv[0] to the command name, not the full path
   };
   
-  // Handle stdio redirection
-  if (redirectOutput && redirectError) {
-    // Both stdout and stderr redirected
-    spawnOptions.stdio = [
-      'inherit',
-      fs.openSync(redirectOutput, 'w'),
-      fs.openSync(redirectError, 'w')
-    ];
-  } else if (appendOutput && redirectError) {
-    // Stdout appended, stderr redirected
-    spawnOptions.stdio = [
-      'inherit',
-      fs.openSync(appendOutput, 'a'),
-      fs.openSync(redirectError, 'w')
-    ];
-  } else if (redirectOutput) {
-    // Only stdout redirected (overwrite)
-    spawnOptions.stdio = ['inherit', fs.openSync(redirectOutput, 'w'), 'inherit'];
+  // Determine stdout file descriptor
+  let stdoutFd = 'inherit';
+  if (redirectOutput) {
+    stdoutFd = fs.openSync(redirectOutput, 'w');
   } else if (appendOutput) {
-    // Only stdout redirected (append)
-    spawnOptions.stdio = ['inherit', fs.openSync(appendOutput, 'a'), 'inherit'];
-  } else if (redirectError) {
-    // Only stderr redirected
-    spawnOptions.stdio = ['inherit', 'inherit', fs.openSync(redirectError, 'w')];
-  } else {
-    // Normal execution - inherit all stdio
-    spawnOptions.stdio = 'inherit';
+    stdoutFd = fs.openSync(appendOutput, 'a');
   }
+  
+  // Determine stderr file descriptor
+  let stderrFd = 'inherit';
+  if (redirectError) {
+    stderrFd = fs.openSync(redirectError, 'w');
+  } else if (appendError) {
+    stderrFd = fs.openSync(appendError, 'a');
+  }
+  
+  // Set stdio
+  spawnOptions.stdio = ['inherit', stdoutFd, stderrFd];
   
   // Execute the command with arguments
   const result = spawnSync(executablePath, args, spawnOptions);
@@ -392,6 +384,7 @@ function prompt() {
       const redirectOutput = parsed.redirectOutput;
       const redirectError = parsed.redirectError;
       const appendOutput = parsed.appendOutput;
+      const appendError = parsed.appendError;
       
       let output = "";
       if (parts.length > 1) {
@@ -413,6 +406,9 @@ function prompt() {
       // If stderr is redirected, create an empty file (echo doesn't write to stderr)
       if (redirectError) {
         fs.writeFileSync(redirectError, '');
+      } else if (appendError) {
+        // For append, we still create/touch the file but don't add content
+        fs.appendFileSync(appendError, '');
       }
       
       prompt();
