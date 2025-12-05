@@ -40,9 +40,53 @@ function findExecutableInPath(command) {
   return null;
 }
 
+function parseCommandLine(commandLine) {
+  const args = [];
+  let currentArg = "";
+  let inSingleQuote = false;
+  let i = 0;
+  
+  while (i < commandLine.length) {
+    const char = commandLine[i];
+    
+    if (char === "'" && !inSingleQuote) {
+      // Start of single quote
+      inSingleQuote = true;
+      i++;
+    } else if (char === "'" && inSingleQuote) {
+      // End of single quote
+      inSingleQuote = false;
+      i++;
+    } else if ((char === " " || char === "\t") && !inSingleQuote) {
+      // Whitespace outside quotes - end current argument
+      if (currentArg.length > 0) {
+        args.push(currentArg);
+        currentArg = "";
+      }
+      i++;
+    } else {
+      // Regular character (or whitespace inside quotes)
+      currentArg += char;
+      i++;
+    }
+  }
+  
+  // Push the last argument if any
+  if (currentArg.length > 0) {
+    args.push(currentArg);
+  }
+  
+  return args;
+}
+
 function executeCommand(commandLine) {
-  // Parse the command and arguments
-  const parts = commandLine.trim().split(/\s+/);
+  // Parse the command and arguments with quote handling
+  const parts = parseCommandLine(commandLine.trim());
+  
+  if (parts.length === 0) {
+    return;
+  }
+  
   const command = parts[0];
   const args = parts.slice(1);
   
@@ -78,10 +122,18 @@ function prompt() {
     }
     
     // Check if the command starts with "echo"
-    if (trimmedCommand.startsWith("echo ")) {
-      // Extract everything after "echo "
-      const args = trimmedCommand.slice(5);
-      console.log(args);
+    if (trimmedCommand.startsWith("echo ") || trimmedCommand === "echo") {
+      // Parse the full command line to handle quotes
+      const parts = parseCommandLine(trimmedCommand);
+      
+      if (parts.length > 1) {
+        // Join all arguments after "echo" with spaces
+        const args = parts.slice(1).join(" ");
+        console.log(args);
+      } else {
+        // Just "echo" with no arguments - print empty line
+        console.log("");
+      }
       prompt();
       return;
     }
