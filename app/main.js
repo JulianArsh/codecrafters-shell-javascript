@@ -50,7 +50,16 @@ function parseCommandLine(commandLine) {
   while (i < commandLine.length) {
     const char = commandLine[i];
     
-    if (char === "'" && !inDoubleQuote) {
+    if (char === '\\' && !inSingleQuote) {
+      // Backslash outside single quotes (works in double quotes too)
+      i++; // Move past the backslash
+      if (i < commandLine.length) {
+        // Add the next character literally (the backslash is removed)
+        currentArg += commandLine[i];
+        i++;
+      }
+      // If backslash is at end of line, just ignore it
+    } else if (char === "'" && !inDoubleQuote) {
       // Single quote (toggle single quote mode, unless in double quotes)
       inSingleQuote = !inSingleQuote;
       i++;
