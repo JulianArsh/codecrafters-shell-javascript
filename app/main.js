@@ -46,6 +46,7 @@ function parseCommandLine(commandLine) {
   let inSingleQuote = false;
   let inDoubleQuote = false;
   let redirectOutput = null;
+  let redirectError = null;
   let i = 0;
   
   while (i < commandLine.length) {
@@ -122,6 +123,45 @@ function parseCommandLine(commandLine) {
       }
       
       redirectOutput = filename;
+    } else if (char === '2' && !inSingleQuote && !inDoubleQuote && i + 1 < commandLine.length && commandLine[i + 1] === '>') {
+      // Handle 2> redirection (stderr)
+      if (currentArg.length > 0) {
+        args.push(currentArg);
+        currentArg = "";
+      }
+      
+      i += 2; // Move past '2>'
+      
+      // Skip whitespace after '2>'
+      while (i < commandLine.length && (commandLine[i] === ' ' || commandLine[i] === '\t')) {
+        i++;
+      }
+      
+      // Parse the output filename
+      let filename = "";
+      let inFileQuote = false;
+      let fileQuoteChar = null;
+      
+      while (i < commandLine.length) {
+        const c = commandLine[i];
+        
+        if ((c === '"' || c === "'") && !inFileQuote) {
+          inFileQuote = true;
+          fileQuoteChar = c;
+          i++;
+        } else if (c === fileQuoteChar && inFileQuote) {
+          inFileQuote = false;
+          fileQuoteChar = null;
+          i++;
+        } else if ((c === ' ' || c === '\t') && !inFileQuote) {
+          break;
+        } else {
+          filename += c;
+          i++;
+        }
+      }
+      
+      redirectError = filename;
     } else if (char === '1' && !inSingleQuote && !inDoubleQuote && i + 1 < commandLine.length && commandLine[i + 1] === '>') {
       // Handle 1> redirection (same as >)
       if (currentArg.length > 0) {
@@ -180,7 +220,7 @@ function parseCommandLine(commandLine) {
     args.push(currentArg);
   }
   
-  return { args, redirectOutput };
+  return { args, redirectOutput, redirectError };
 }
 
 function executeCommand(commandLine) {
@@ -188,6 +228,7 @@ function executeCommand(commandLine) {
   const parsed = parseCommandLine(commandLine.trim());
   const parts = parsed.args;
   const redirectOutput = parsed.redirectOutput;
+  const redirectError = parsed.redirectError;
   
   if (parts.length === 0) {
     return;
@@ -209,9 +250,20 @@ function executeCommand(commandLine) {
     argv0: command,   // Set argv[0] to the command name, not the full path
   };
   
-  if (redirectOutput) {
-    // Redirect stdout to file
+  // Handle stdio redirection
+  if (redirectOutput && redirectError) {
+    // Both stdout and stderr redirected
+    spawnOptions.stdio = [
+      'inherit',
+      fs.openSync(redirectOutput, 'w'),
+      fs.openSync(redirectError, 'w')
+    ];
+  } else if (redirectOutput) {
+    // Only stdout redirected
     spawnOptions.stdio = ['inherit', fs.openSync(redirectOutput, 'w'), 'inherit'];
+  } else if (redirectError) {
+    // Only stderr redirected
+    spawnOptions.stdio = ['inherit', 'inherit', fs.openSync(redirectError, 'w')];
   } else {
     // Normal execution - inherit all stdio
     spawnOptions.stdio = 'inherit';
@@ -242,6 +294,7 @@ function prompt() {
       const parsed = parseCommandLine(trimmedCommand);
       const parts = parsed.args;
       const redirectOutput = parsed.redirectOutput;
+      const redirectError = parsed.redirectError;
       
       let output = "";
       if (parts.length > 1) {
@@ -250,8 +303,12 @@ function prompt() {
       }
       
       if (redirectOutput) {
-        // Write to file
+        // Write to file (stdout redirect)
         fs.writeFileSync(redirectOutput, output + '\n');
+      } else if (redirectError) {
+        // For echo, 2> doesn't redirect anything since echo writes to stdout
+        // Just print normally
+        console.log(output);
       } else {
         // Print to stdout
         console.log(output);
