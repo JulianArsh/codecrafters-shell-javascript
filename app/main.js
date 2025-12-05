@@ -55,9 +55,10 @@ function executeCommand(commandLine) {
   }
   
   // Execute the command with arguments
-  // Pass the original command name as argv[0], not the full path
-  const result = spawnSync(executablePath, [command, ...args], {
+  // Use argv0 option to set the program name (argv[0])
+  const result = spawnSync(executablePath, args, {
     stdio: "inherit", // This passes stdin/stdout/stderr to the child process
+    argv0: command,   // Set argv[0] to the command name, not the full path
   });
   
   // If there was an error spawning the process, handle it
