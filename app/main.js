@@ -105,6 +105,69 @@ function parseCommandLine(commandLine) {
   return args;
 }
 
+function prompt() {
+  rl.question("$ ", (command) => {
+    // Trim the command to remove extra whitespace
+    const trimmedCommand = command.trim();
+    
+    // Check if the command is "exit"
+    if (trimmedCommand === "exit") {
+      process.exit(0);
+    }
+    
+    // Check if the command starts with "echo"
+    if (trimmedCommand.startsWith("echo ") || trimmedCommand === "echo") {
+      // Parse the full command line to handle quotes
+      const parts = parseCommandLine(trimmedCommand);
+      
+      if (parts.length > 1) {
+        // Join all arguments after "echo" with spaces
+        const args = parts.slice(1).join(" ");
+        console.log(args);
+      } else {
+        // Just "echo" with no arguments - print empty line
+        console.log("");
+      }
+      prompt();
+      return;
+    }
+    
+    // Check if the command starts with "type"
+    if (trimmedCommand.startsWith("type ")) {
+      // Extract the argument after "type "
+      const arg = trimmedCommand.slice(5).trim();
+      
+      // List of builtin commands
+      const builtins = ["echo", "exit", "type"];
+      
+      // First, check if it's a builtin
+      if (builtins.includes(arg)) {
+        console.log(`${arg} is a shell builtin`);
+      } else {
+        // Search for executable in PATH
+        const executablePath = findExecutableInPath(arg);
+        
+        if (executablePath) {
+          console.log(`${arg} is ${executablePath}`);
+        } else {
+          console.log(`${arg}: not found`);
+        }
+      }
+      prompt();
+      return;
+    }
+    
+    // Try to execute as external command
+    executeCommand(trimmedCommand);
+    
+    // Loop back to prompt again
+    prompt();
+  });
+}
+
+// Start the REPL
+prompt();
+
 function executeCommand(commandLine) {
   // Parse the command and arguments with quote handling
   const parts = parseCommandLine(commandLine.trim());
