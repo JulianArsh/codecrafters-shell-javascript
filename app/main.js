@@ -305,13 +305,14 @@ function prompt() {
       if (redirectOutput) {
         // Write to file (stdout redirect)
         fs.writeFileSync(redirectOutput, output + '\n');
-      } else if (redirectError) {
-        // For echo, 2> doesn't redirect anything since echo writes to stdout
-        // Just print normally
-        console.log(output);
       } else {
         // Print to stdout
         console.log(output);
+      }
+      
+      // If stderr is redirected, create an empty file (echo doesn't write to stderr)
+      if (redirectError) {
+        fs.writeFileSync(redirectError, '');
       }
       
       prompt();
