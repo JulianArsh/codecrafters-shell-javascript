@@ -45,6 +45,7 @@ function parseCommandLine(commandLine) {
   let currentArg = "";
   let inSingleQuote = false;
   let inDoubleQuote = false;
+  let redirectOutput = null;
   let i = 0;
   
   while (i < commandLine.length) {
@@ -55,8 +56,7 @@ function parseCommandLine(commandLine) {
       i++; // Move past the backslash
       if (i < commandLine.length) {
         const nextChar = commandLine[i];
-        // In double quotes, backslash only escapes: $ ` " \ and newline
-        // For this stage, we'll escape: " \ and $
+        // In double quotes, backslash escapes: dollar sign, backtick, double quote, backslash
         if (nextChar === '"' || nextChar === '\\' || nextChar === '$' || nextChar === '`') {
           // These characters are escaped - remove backslash, add the character
           currentArg += nextChar;
@@ -83,6 +83,84 @@ function parseCommandLine(commandLine) {
       // Double quote (toggle double quote mode, unless in single quotes)
       inDoubleQuote = !inDoubleQuote;
       i++;
+    } else if (char === '>' && !inSingleQuote && !inDoubleQuote) {
+      // Redirection operator
+      if (currentArg.length > 0) {
+        args.push(currentArg);
+        currentArg = "";
+      }
+      
+      i++; // Move past '>'
+      
+      // Skip whitespace after '>'
+      while (i < commandLine.length && (commandLine[i] === ' ' || commandLine[i] === '\t')) {
+        i++;
+      }
+      
+      // Parse the output filename
+      let filename = "";
+      let inFileQuote = false;
+      let fileQuoteChar = null;
+      
+      while (i < commandLine.length) {
+        const c = commandLine[i];
+        
+        if ((c === '"' || c === "'") && !inFileQuote) {
+          inFileQuote = true;
+          fileQuoteChar = c;
+          i++;
+        } else if (c === fileQuoteChar && inFileQuote) {
+          inFileQuote = false;
+          fileQuoteChar = null;
+          i++;
+        } else if ((c === ' ' || c === '\t') && !inFileQuote) {
+          break;
+        } else {
+          filename += c;
+          i++;
+        }
+      }
+      
+      redirectOutput = filename;
+    } else if (char === '1' && !inSingleQuote && !inDoubleQuote && i + 1 < commandLine.length && commandLine[i + 1] === '>') {
+      // Handle 1> redirection (same as >)
+      if (currentArg.length > 0) {
+        args.push(currentArg);
+        currentArg = "";
+      }
+      
+      i += 2; // Move past '1>'
+      
+      // Skip whitespace after '1>'
+      while (i < commandLine.length && (commandLine[i] === ' ' || commandLine[i] === '\t')) {
+        i++;
+      }
+      
+      // Parse the output filename
+      let filename = "";
+      let inFileQuote = false;
+      let fileQuoteChar = null;
+      
+      while (i < commandLine.length) {
+        const c = commandLine[i];
+        
+        if ((c === '"' || c === "'") && !inFileQuote) {
+          inFileQuote = true;
+          fileQuoteChar = c;
+          i++;
+        } else if (c === fileQuoteChar && inFileQuote) {
+          inFileQuote = false;
+          fileQuoteChar = null;
+          i++;
+        } else if ((c === ' ' || c === '\t') && !inFileQuote) {
+          break;
+        } else {
+          filename += c;
+          i++;
+        }
+      }
+      
+      redirectOutput = filename;
     } else if ((char === " " || char === "\t") && !inSingleQuote && !inDoubleQuote) {
       // Whitespace outside quotes - end current argument
       if (currentArg.length > 0) {
@@ -102,75 +180,14 @@ function parseCommandLine(commandLine) {
     args.push(currentArg);
   }
   
-  return args;
+  return { args, redirectOutput };
 }
-
-function prompt() {
-  rl.question("$ ", (command) => {
-    // Trim the command to remove extra whitespace
-    const trimmedCommand = command.trim();
-    
-    // Check if the command is "exit"
-    if (trimmedCommand === "exit") {
-      process.exit(0);
-    }
-    
-    // Check if the command starts with "echo"
-    if (trimmedCommand.startsWith("echo ") || trimmedCommand === "echo") {
-      // Parse the full command line to handle quotes
-      const parts = parseCommandLine(trimmedCommand);
-      
-      if (parts.length > 1) {
-        // Join all arguments after "echo" with spaces
-        const args = parts.slice(1).join(" ");
-        console.log(args);
-      } else {
-        // Just "echo" with no arguments - print empty line
-        console.log("");
-      }
-      prompt();
-      return;
-    }
-    
-    // Check if the command starts with "type"
-    if (trimmedCommand.startsWith("type ")) {
-      // Extract the argument after "type "
-      const arg = trimmedCommand.slice(5).trim();
-      
-      // List of builtin commands
-      const builtins = ["echo", "exit", "type"];
-      
-      // First, check if it's a builtin
-      if (builtins.includes(arg)) {
-        console.log(`${arg} is a shell builtin`);
-      } else {
-        // Search for executable in PATH
-        const executablePath = findExecutableInPath(arg);
-        
-        if (executablePath) {
-          console.log(`${arg} is ${executablePath}`);
-        } else {
-          console.log(`${arg}: not found`);
-        }
-      }
-      prompt();
-      return;
-    }
-    
-    // Try to execute as external command
-    executeCommand(trimmedCommand);
-    
-    // Loop back to prompt again
-    prompt();
-  });
-}
-
-// Start the REPL
-prompt();
 
 function executeCommand(commandLine) {
   // Parse the command and arguments with quote handling
-  const parts = parseCommandLine(commandLine.trim());
+  const parsed = parseCommandLine(commandLine.trim());
+  const parts = parsed.args;
+  const redirectOutput = parsed.redirectOutput;
   
   if (parts.length === 0) {
     return;
@@ -187,12 +204,21 @@ function executeCommand(commandLine) {
     return;
   }
   
-  // Execute the command with arguments
-  // Use argv0 option to set the program name (argv[0])
-  const result = spawnSync(executablePath, args, {
-    stdio: "inherit", // This passes stdin/stdout/stderr to the child process
+  // Set up spawn options
+  const spawnOptions = {
     argv0: command,   // Set argv[0] to the command name, not the full path
-  });
+  };
+  
+  if (redirectOutput) {
+    // Redirect stdout to file
+    spawnOptions.stdio = ['inherit', fs.openSync(redirectOutput, 'w'), 'inherit'];
+  } else {
+    // Normal execution - inherit all stdio
+    spawnOptions.stdio = 'inherit';
+  }
+  
+  // Execute the command with arguments
+  const result = spawnSync(executablePath, args, spawnOptions);
   
   // If there was an error spawning the process, handle it
   if (result.error) {
@@ -212,17 +238,25 @@ function prompt() {
     
     // Check if the command starts with "echo"
     if (trimmedCommand.startsWith("echo ") || trimmedCommand === "echo") {
-      // Parse the full command line to handle quotes
-      const parts = parseCommandLine(trimmedCommand);
+      // Parse the full command line to handle quotes and redirection
+      const parsed = parseCommandLine(trimmedCommand);
+      const parts = parsed.args;
+      const redirectOutput = parsed.redirectOutput;
       
+      let output = "";
       if (parts.length > 1) {
         // Join all arguments after "echo" with spaces
-        const args = parts.slice(1).join(" ");
-        console.log(args);
-      } else {
-        // Just "echo" with no arguments - print empty line
-        console.log("");
+        output = parts.slice(1).join(" ");
       }
+      
+      if (redirectOutput) {
+        // Write to file
+        fs.writeFileSync(redirectOutput, output + '\n');
+      } else {
+        // Print to stdout
+        console.log(output);
+      }
+      
       prompt();
       return;
     }
