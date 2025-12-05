@@ -1,6 +1,7 @@
 const readline = require("readline");
 const fs = require("fs");
 const path = require("path");
+const { spawnSync } = require("child_process");
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -37,6 +38,31 @@ function findExecutableInPath(command) {
   }
   
   return null;
+}
+
+function executeCommand(commandLine) {
+  // Parse the command and arguments
+  const parts = commandLine.trim().split(/\s+/);
+  const command = parts[0];
+  const args = parts.slice(1);
+  
+  // Find the executable in PATH
+  const executablePath = findExecutableInPath(command);
+  
+  if (!executablePath) {
+    console.log(`${command}: command not found`);
+    return;
+  }
+  
+  // Execute the command with arguments
+  const result = spawnSync(executablePath, args, {
+    stdio: "inherit", // This passes stdin/stdout/stderr to the child process
+  });
+  
+  // If there was an error spawning the process, handle it
+  if (result.error) {
+    console.log(`${command}: command not found`);
+  }
 }
 
 function prompt() {
@@ -83,8 +109,8 @@ function prompt() {
       return;
     }
     
-    // Print the "command not found" message
-    console.log(`${trimmedCommand}: command not found`);
+    // Try to execute as external command
+    executeCommand(trimmedCommand);
     
     // Loop back to prompt again
     prompt();
