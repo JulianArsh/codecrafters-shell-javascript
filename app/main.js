@@ -44,20 +44,21 @@ function parseCommandLine(commandLine) {
   const args = [];
   let currentArg = "";
   let inSingleQuote = false;
+  let inDoubleQuote = false;
   let i = 0;
   
   while (i < commandLine.length) {
     const char = commandLine[i];
     
-    if (char === "'" && !inSingleQuote) {
-      // Start of single quote
-      inSingleQuote = true;
+    if (char === "'" && !inDoubleQuote) {
+      // Single quote (toggle single quote mode, unless in double quotes)
+      inSingleQuote = !inSingleQuote;
       i++;
-    } else if (char === "'" && inSingleQuote) {
-      // End of single quote
-      inSingleQuote = false;
+    } else if (char === '"' && !inSingleQuote) {
+      // Double quote (toggle double quote mode, unless in single quotes)
+      inDoubleQuote = !inDoubleQuote;
       i++;
-    } else if ((char === " " || char === "\t") && !inSingleQuote) {
+    } else if ((char === " " || char === "\t") && !inSingleQuote && !inDoubleQuote) {
       // Whitespace outside quotes - end current argument
       if (currentArg.length > 0) {
         args.push(currentArg);
