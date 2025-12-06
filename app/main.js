@@ -447,17 +447,40 @@ function executeBuiltin(command, args, inputData, outputStream) {
       break;
     
     case "history":
-      let limit = commandHistory.length;
-      if (args.length > 0) {
-        const n = parseInt(args[0], 10);
-        if (!isNaN(n) && n > 0) {
-          limit = n;
+      // Check for -r flag
+      if (args.length > 0 && args[0] === '-r') {
+        if (args.length > 1) {
+          const historyFilePath = args[1];
+          try {
+            if (fs.existsSync(historyFilePath)) {
+              const historyContent = fs.readFileSync(historyFilePath, 'utf-8');
+              const lines = historyContent.split('\n');
+              
+              for (const line of lines) {
+                const trimmedLine = line.trim();
+                if (trimmedLine.length > 0) {
+                  commandHistory.push(trimmedLine);
+                }
+              }
+            }
+          } catch (err) {
+            outputStream.write(`history: cannot read ${historyFilePath}: ${err.message}\n`);
+          }
         }
-      }
-      
-      const startIndex = Math.max(0, commandHistory.length - limit);
-      for (let i = startIndex; i < commandHistory.length; i++) {
-        outputStream.write(`    ${i + 1}  ${commandHistory[i]}\n`);
+      } else {
+        // Display history
+        let limit = commandHistory.length;
+        if (args.length > 0) {
+          const n = parseInt(args[0], 10);
+          if (!isNaN(n) && n > 0) {
+            limit = n;
+          }
+        }
+        
+        const startIndex = Math.max(0, commandHistory.length - limit);
+        for (let i = startIndex; i < commandHistory.length; i++) {
+          outputStream.write(`    ${i + 1}  ${commandHistory[i]}\n`);
+        }
       }
       break;
     
@@ -784,17 +807,40 @@ function prompt() {
       const parsed = parseCommandLine(trimmedCommand);
       const parts = parsed.args;
       
-      let limit = commandHistory.length;
-      if (parts.length > 1) {
-        const n = parseInt(parts[1], 10);
-        if (!isNaN(n) && n > 0) {
-          limit = n;
+      // Check for -r flag
+      if (parts.length > 1 && parts[1] === '-r') {
+        if (parts.length > 2) {
+          const historyFilePath = parts[2];
+          try {
+            if (fs.existsSync(historyFilePath)) {
+              const historyContent = fs.readFileSync(historyFilePath, 'utf-8');
+              const lines = historyContent.split('\n');
+              
+              for (const line of lines) {
+                const trimmedLine = line.trim();
+                if (trimmedLine.length > 0) {
+                  commandHistory.push(trimmedLine);
+                }
+              }
+            }
+          } catch (err) {
+            console.log(`history: cannot read ${historyFilePath}: ${err.message}`);
+          }
         }
-      }
-      
-      const startIndex = Math.max(0, commandHistory.length - limit);
-      for (let i = startIndex; i < commandHistory.length; i++) {
-        console.log(`    ${i + 1}  ${commandHistory[i]}`);
+      } else {
+        // Display history
+        let limit = commandHistory.length;
+        if (parts.length > 1) {
+          const n = parseInt(parts[1], 10);
+          if (!isNaN(n) && n > 0) {
+            limit = n;
+          }
+        }
+        
+        const startIndex = Math.max(0, commandHistory.length - limit);
+        for (let i = startIndex; i < commandHistory.length; i++) {
+          console.log(`    ${i + 1}  ${commandHistory[i]}`);
+        }
       }
       prompt();
       return;
