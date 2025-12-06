@@ -77,8 +77,10 @@ function completer(line) {
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // Return the full match with trailing space as the only completion
-      return [[hits[0] + ' '], line];
+      // Calculate the completion (what needs to be added)
+      const completion = hits[0].substring(line.length) + ' ';
+      // Return completion that will be appended to current line
+      return [[completion], line];
     }
     
     // Multiple matches - implement double-tab behavior
@@ -108,7 +110,8 @@ function completer(line) {
       if (commonPrefix.length > line.length) {
         lastLine = null;
         lastMatches = null;
-        return [[commonPrefix], line];
+        const completion = commonPrefix.substring(line.length);
+        return [[completion], line];
       }
       
       // Otherwise ring the bell and save state for double-tab
