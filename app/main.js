@@ -447,7 +447,7 @@ function executeBuiltin(command, args, inputData, outputStream) {
       break;
     
     case "history":
-      // Check for -r flag
+      // Check for -r flag (read)
       if (args.length > 0 && args[0] === '-r') {
         if (args.length > 1) {
           const historyFilePath = args[1];
@@ -467,7 +467,26 @@ function executeBuiltin(command, args, inputData, outputStream) {
             outputStream.write(`history: cannot read ${historyFilePath}: ${err.message}\n`);
           }
         }
-      } else {
+      } 
+      // Check for -w flag (write)
+      else if (args.length > 0 && args[0] === '-w') {
+        if (args.length > 1) {
+          const historyFilePath = args[1];
+          try {
+            const dir = path.dirname(historyFilePath);
+            if (dir && dir !== '.' && !fs.existsSync(dir)) {
+              fs.mkdirSync(dir, { recursive: true });
+            }
+            
+            // Write all commands to the file with a trailing newline
+            const historyContent = commandHistory.join('\n') + '\n';
+            fs.writeFileSync(historyFilePath, historyContent, 'utf-8');
+          } catch (err) {
+            outputStream.write(`history: cannot write to ${historyFilePath}: ${err.message}\n`);
+          }
+        }
+      } 
+      else {
         // Display history
         let limit = commandHistory.length;
         if (args.length > 0) {
@@ -807,7 +826,7 @@ function prompt() {
       const parsed = parseCommandLine(trimmedCommand);
       const parts = parsed.args;
       
-      // Check for -r flag
+      // Check for -r flag (read)
       if (parts.length > 1 && parts[1] === '-r') {
         if (parts.length > 2) {
           const historyFilePath = parts[2];
@@ -827,7 +846,26 @@ function prompt() {
             console.log(`history: cannot read ${historyFilePath}: ${err.message}`);
           }
         }
-      } else {
+      } 
+      // Check for -w flag (write)
+      else if (parts.length > 1 && parts[1] === '-w') {
+        if (parts.length > 2) {
+          const historyFilePath = parts[2];
+          try {
+            const dir = path.dirname(historyFilePath);
+            if (dir && dir !== '.' && !fs.existsSync(dir)) {
+              fs.mkdirSync(dir, { recursive: true });
+            }
+            
+            // Write all commands to the file with a trailing newline
+            const historyContent = commandHistory.join('\n') + '\n';
+            fs.writeFileSync(historyFilePath, historyContent, 'utf-8');
+          } catch (err) {
+            console.log(`history: cannot write to ${historyFilePath}: ${err.message}`);
+          }
+        }
+      } 
+      else {
         // Display history
         let limit = commandHistory.length;
         if (parts.length > 1) {
