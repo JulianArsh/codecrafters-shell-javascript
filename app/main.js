@@ -447,7 +447,16 @@ function executeBuiltin(command, args, inputData, outputStream) {
       break;
     
     case "history":
-      for (let i = 0; i < commandHistory.length; i++) {
+      let limit = commandHistory.length;
+      if (args.length > 0) {
+        const n = parseInt(args[0], 10);
+        if (!isNaN(n) && n > 0) {
+          limit = n;
+        }
+      }
+      
+      const startIndex = Math.max(0, commandHistory.length - limit);
+      for (let i = startIndex; i < commandHistory.length; i++) {
         outputStream.write(`    ${i + 1}  ${commandHistory[i]}\n`);
       }
       break;
@@ -772,7 +781,19 @@ function prompt() {
     }
     
     if (trimmedCommand === "history" || trimmedCommand.startsWith("history ")) {
-      for (let i = 0; i < commandHistory.length; i++) {
+      const parsed = parseCommandLine(trimmedCommand);
+      const parts = parsed.args;
+      
+      let limit = commandHistory.length;
+      if (parts.length > 1) {
+        const n = parseInt(parts[1], 10);
+        if (!isNaN(n) && n > 0) {
+          limit = n;
+        }
+      }
+      
+      const startIndex = Math.max(0, commandHistory.length - limit);
+      for (let i = startIndex; i < commandHistory.length; i++) {
         console.log(`    ${i + 1}  ${commandHistory[i]}`);
       }
       prompt();
