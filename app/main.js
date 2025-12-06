@@ -10,6 +10,9 @@ let rlGlobal = null;
 let lastLine = null;
 let lastMatches = null;
 
+// Flag to track if we just completed with a single match
+let justCompletedSingle = false;
+
 // Custom completer function for tab completion  
 function completer(line) {
   const builtins = ["echo", "exit", "type"];
@@ -50,9 +53,6 @@ function completer(line) {
     hits = hits.concat(Array.from(foundExecutables));
     hits.sort();
     
-    // Debug logging
-    console.error(`DEBUG: line="${line}", hits=[${hits.map(h => `"${h}"`).join(', ')}], count=${hits.length}`);
-    
     // No matches - ring bell
     if (hits.length === 0) {
       if (rlGlobal && rlGlobal.output) {
@@ -65,14 +65,12 @@ function completer(line) {
       return [[], line];
     }
     
-    // Single match - complete with trailing space
+    // Single match - complete and schedule space insertion
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // Debug: log what we're returning
-      console.error(`DEBUG: Single match found: "${hits[0]}", line: "${line}", returning: "${hits[0] + ' '}"`);
-      // For single match, return with trailing space
-      return [[hits[0] + ' '], line];
+      justCompletedSingle = true;
+      return [[hits[0]], line];
     }
     
     // Multiple matches - find longest common prefix
@@ -89,7 +87,6 @@ function completer(line) {
     if (commonPrefix.length > line.length) {
       lastLine = null;
       lastMatches = null;
-      // Don't add space even if commonPrefix matches one of the hits - there are still multiple matches
       return [[commonPrefix], line];
     }
     
@@ -131,6 +128,23 @@ const rl = readline.createInterface({
 
 // Store reference globally for completer
 rlGlobal = rl;
+
+// Hook into the line event to add space after single completion
+const originalRefreshLine = rl._refreshLine;
+rl._refreshLine = function() {
+  originalRefreshLine.call(this);
+  
+  // If we just completed a single match, add a space
+  if (justCompletedSingle) {
+    justCompletedSingle = false;
+    // Use nextTick to ensure this happens after readline processes the completion
+    process.nextTick(() => {
+      if (rlGlobal && !rlGlobal.line.includes(' ')) {
+        rlGlobal.write(' ');
+      }
+    });
+  }
+};
 
 function findExecutableInPath(command) {
   // Get the PATH environment variable
