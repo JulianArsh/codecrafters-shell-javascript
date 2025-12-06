@@ -618,8 +618,6 @@ function executeSingleCommand(commandLine, callback) {
     let outputStream = process.stdout;
     let outputFd = null;
     
-    // For builtins, only handle stdout redirection (not stderr)
-    // because builtins typically don't write to stderr
     if (redirectOutput) {
       const dir = path.dirname(redirectOutput);
       if (dir && dir !== '.' && !fs.existsSync(dir)) {
@@ -636,8 +634,22 @@ function executeSingleCommand(commandLine, callback) {
       outputStream = fs.createWriteStream(null, { fd: outputFd });
     }
     
-    // Don't handle stderr redirection for builtins that only write to stdout
-    // The redirectError and appendError are simply ignored for echo, pwd, type
+    // Handle stderr redirection - create the file even if empty
+    if (redirectError) {
+      const dir = path.dirname(redirectError);
+      if (dir && dir !== '.' && !fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      // Create empty file for stderr redirect (builtins don't write to stderr normally)
+      fs.writeFileSync(redirectError, '');
+    } else if (appendError) {
+      const dir = path.dirname(appendError);
+      if (dir && dir !== '.' && !fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      // Touch the file for append mode
+      fs.appendFileSync(appendError, '');
+    }
     
     executeBuiltin(command, args, null, outputStream);
     
@@ -778,10 +790,27 @@ function prompt() {
       const parts = parsed.args;
       const redirectOutput = parsed.redirectOutput;
       const appendOutput = parsed.appendOutput;
+      const redirectError = parsed.redirectError;
+      const appendError = parsed.appendError;
       
       let output = "";
       if (parts.length > 1) {
         output = parts.slice(1).join(" ");
+      }
+      
+      // Handle stderr redirection - create the file even if empty
+      if (redirectError) {
+        const dir = path.dirname(redirectError);
+        if (dir && dir !== '.' && !fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(redirectError, '');
+      } else if (appendError) {
+        const dir = path.dirname(appendError);
+        if (dir && dir !== '.' && !fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.appendFileSync(appendError, '');
       }
       
       if (redirectOutput) {
