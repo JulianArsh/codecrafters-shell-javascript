@@ -318,6 +318,9 @@ function executeCommand(commandLine) {
   const appendOutput = parsed.appendOutput;
   const appendError = parsed.appendError;
   
+  // Debug logging
+  console.error(`DEBUG: parsed =`, JSON.stringify(parsed));
+  
   if (parts.length === 0) {
     return;
   }
