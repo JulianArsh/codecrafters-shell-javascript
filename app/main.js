@@ -3,6 +3,9 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
+// Store the readline interface globally so we can access it in the completer
+let rlGlobal = null;
+
 // Custom completer function for tab completion
 function completer(line) {
   const builtins = ["echo", "exit"];
@@ -56,9 +59,18 @@ function completer(line) {
     
     // If there's exactly one match, add a space after it
     if (hits.length === 1) {
-      // Add trailing space to the completion
-      const completions = [hits[0] + ' '];
-      return [completions, trimmedLine];
+      // Schedule adding space after completion
+      if (rlGlobal) {
+        // Use setImmediate to add space after completion is applied
+        setImmediate(() => {
+          if (rlGlobal && rlGlobal.line === hits[0]) {
+            rlGlobal.line = hits[0] + ' ';
+            rlGlobal.cursor = rlGlobal.line.length;
+            rlGlobal._refreshLine();
+          }
+        });
+      }
+      return [[hits[0]], trimmedLine];
     }
     
     // If there are no matches, ring the bell
@@ -71,6 +83,7 @@ function completer(line) {
     return [hits, trimmedLine];
   }
   
+  // If there's a space, don't autocomplete
   return [[], line];
 }
 
@@ -80,6 +93,9 @@ const rl = readline.createInterface({
   completer: completer,
   terminal: true
 });
+
+// Store reference globally for completer
+rlGlobal = rl;
 
 function findExecutableInPath(command) {
   // Get the PATH environment variable
