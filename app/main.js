@@ -54,18 +54,21 @@ function completer(line) {
     // Add found executables to hits
     hits = hits.concat(Array.from(foundExecutables));
     
-    // Return [completions, original string]
     // If there's exactly one match, add a space after it
     if (hits.length === 1) {
-      return [[hits[0] + ' '], line];
+      // Add trailing space to the completion
+      const completions = [hits[0] + ' '];
+      return [completions, trimmedLine];
     }
     
     // If there are no matches, ring the bell
     if (hits.length === 0) {
       process.stdout.write('\x07');
+      return [[], trimmedLine];
     }
     
-    return [hits.length ? hits : [], line];
+    // Multiple matches
+    return [hits, trimmedLine];
   }
   
   return [[], line];
