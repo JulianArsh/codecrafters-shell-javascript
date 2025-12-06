@@ -62,11 +62,11 @@ function completer(line) {
       return [[], line];
     }
     
-    // Single match - complete with space
+    // Single match - complete with trailing space
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // Return completion with trailing space
+      // Return the completion WITH a space added
       return [[hits[0] + ' '], line];
     }
     
@@ -80,10 +80,14 @@ function completer(line) {
       commonPrefix = commonPrefix.substring(0, j);
     }
     
-    // If common prefix is longer than what's typed, complete to it (no space)
+    // If common prefix is longer than what's typed, complete to it (with space if exact match)
     if (commonPrefix.length > line.length) {
       lastLine = null;
       lastMatches = null;
+      // Check if this common prefix is an exact match to one of the hits
+      if (hits.includes(commonPrefix)) {
+        return [[commonPrefix + ' '], line];
+      }
       return [[commonPrefix], line];
     }
     
