@@ -12,7 +12,7 @@ let lastMatches = null;
 
 // Custom completer function for tab completion
 function completer(line) {
-  const builtins = ["echo", "exit"];
+  const builtins = ["echo", "exit", "type"];
   
   // Only autocomplete if we're at the start of the command (no spaces yet)
   if (!line.includes(' ')) {
@@ -63,7 +63,11 @@ function completer(line) {
     
     // If there are no matches, ring the bell
     if (hits.length === 0) {
-      process.stdout.write('\x07');
+      if (rlGlobal && rlGlobal.output) {
+        rlGlobal.output.write('\x07');
+      } else {
+        process.stdout.write('\x07');
+      }
       lastLine = null;
       lastMatches = null;
       return [[], line];
@@ -73,8 +77,7 @@ function completer(line) {
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // Return the completion string with a space appended
-      // This tells readline to complete and add a space
+      // Return array with the single completion including space
       return [[hits[0] + ' '], line];
     }
     
