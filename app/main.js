@@ -8,6 +8,7 @@ let rlGlobal = null;
 let lastLine = null;
 let lastMatches = null;
 let commandHistory = []; // Store command history
+let lastAppendedIndex = 0; // Track the last index that was appended to file
 
 function completer(line) {
   const builtins = ["cd", "echo", "exit", "pwd", "type", "history"];
@@ -462,6 +463,8 @@ function executeBuiltin(command, args, inputData, outputStream) {
                   commandHistory.push(trimmedLine);
                 }
               }
+              // Update lastAppendedIndex after reading
+              lastAppendedIndex = commandHistory.length;
             }
           } catch (err) {
             outputStream.write(`history: cannot read ${historyFilePath}: ${err.message}\n`);
@@ -481,11 +484,37 @@ function executeBuiltin(command, args, inputData, outputStream) {
             // Write all commands to the file with a trailing newline
             const historyContent = commandHistory.join('\n') + '\n';
             fs.writeFileSync(historyFilePath, historyContent, 'utf-8');
+            // Update lastAppendedIndex after writing
+            lastAppendedIndex = commandHistory.length;
           } catch (err) {
             outputStream.write(`history: cannot write to ${historyFilePath}: ${err.message}\n`);
           }
         }
-      } 
+      }
+      // Check for -a flag (append)
+      else if (args.length > 0 && args[0] === '-a') {
+        if (args.length > 1) {
+          const historyFilePath = args[1];
+          try {
+            const dir = path.dirname(historyFilePath);
+            if (dir && dir !== '.' && !fs.existsSync(dir)) {
+              fs.mkdirSync(dir, { recursive: true });
+            }
+            
+            // Append only new commands (from lastAppendedIndex to end)
+            const newCommands = commandHistory.slice(lastAppendedIndex);
+            if (newCommands.length > 0) {
+              const contentToAppend = newCommands.join('\n') + '\n';
+              fs.appendFileSync(historyFilePath, contentToAppend, 'utf-8');
+            }
+            
+            // Update lastAppendedIndex
+            lastAppendedIndex = commandHistory.length;
+          } catch (err) {
+            outputStream.write(`history: cannot append to ${historyFilePath}: ${err.message}\n`);
+          }
+        }
+      }
       else {
         // Display history
         let limit = commandHistory.length;
@@ -841,6 +870,8 @@ function prompt() {
                   commandHistory.push(trimmedLine);
                 }
               }
+              // Update lastAppendedIndex after reading
+              lastAppendedIndex = commandHistory.length;
             }
           } catch (err) {
             console.log(`history: cannot read ${historyFilePath}: ${err.message}`);
@@ -860,11 +891,37 @@ function prompt() {
             // Write all commands to the file with a trailing newline
             const historyContent = commandHistory.join('\n') + '\n';
             fs.writeFileSync(historyFilePath, historyContent, 'utf-8');
+            // Update lastAppendedIndex after writing
+            lastAppendedIndex = commandHistory.length;
           } catch (err) {
             console.log(`history: cannot write to ${historyFilePath}: ${err.message}`);
           }
         }
-      } 
+      }
+      // Check for -a flag (append)
+      else if (parts.length > 1 && parts[1] === '-a') {
+        if (parts.length > 2) {
+          const historyFilePath = parts[2];
+          try {
+            const dir = path.dirname(historyFilePath);
+            if (dir && dir !== '.' && !fs.existsSync(dir)) {
+              fs.mkdirSync(dir, { recursive: true });
+            }
+            
+            // Append only new commands (from lastAppendedIndex to end)
+            const newCommands = commandHistory.slice(lastAppendedIndex);
+            if (newCommands.length > 0) {
+              const contentToAppend = newCommands.join('\n') + '\n';
+              fs.appendFileSync(historyFilePath, contentToAppend, 'utf-8');
+            }
+            
+            // Update lastAppendedIndex
+            lastAppendedIndex = commandHistory.length;
+          } catch (err) {
+            console.log(`history: cannot append to ${historyFilePath}: ${err.message}`);
+          }
+        }
+      }
       else {
         // Display history
         let limit = commandHistory.length;
