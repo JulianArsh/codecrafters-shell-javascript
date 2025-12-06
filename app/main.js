@@ -70,6 +70,7 @@ function completer(line) {
     // Multiple matches - return them for display
     return [hits, trimmedLine];
   }
+  }
   
   // If there's a space, don't autocomplete
   return [[], line];
