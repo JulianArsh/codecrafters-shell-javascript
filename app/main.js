@@ -66,16 +66,8 @@ function completer(line) {
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // Add the space by manually updating the line after completion
-      setTimeout(() => {
-        if (rlGlobal && rlGlobal.line.trim() === hits[0].trim()) {
-          // Directly manipulate the line to add a space
-          rlGlobal.line = hits[0] + ' ';
-          rlGlobal.cursor = rlGlobal.line.length;
-          rlGlobal._refreshLine();
-        }
-      }, 0);
-      return [[hits[0]], line];
+      // Return the completion WITH a trailing space
+      return [[hits[0] + ' '], line];
     }
     
     // Multiple matches - find longest common prefix
