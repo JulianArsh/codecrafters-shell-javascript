@@ -66,16 +66,7 @@ function completer(line) {
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // Append space after completion
-      const match = hits[0];
-      // Trick: return array with empty string to trigger completion
-      // but set the line ourselves
-      setTimeout(() => {
-        if (rlGlobal && rlGlobal.line === match) {
-          rlGlobal.write(' ');
-        }
-      }, 0);
-      return [[match], line];
+      return [[hits[0]], line];
     }
     
     // Multiple matches - double-tab behavior
@@ -125,11 +116,34 @@ const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
   completer: completer,
-  terminal: true
+  terminal: true,
+  completerOnTab: true  // Ensure completer is called on Tab
 });
 
 // Store reference globally for completer
 rlGlobal = rl;
+
+// Hook into the completion to add trailing space
+const originalCompleter = rl.completer;
+rl.completer = function(line, callback) {
+  originalCompleter(line, (err, result) => {
+    if (err) return callback(err, result);
+    
+    const [completions, originalLine] = result;
+    
+    // If single completion and no space in line, add space after
+    if (completions.length === 1 && !line.includes(' ')) {
+      // Schedule adding space after completion
+      process.nextTick(() => {
+        if (rl.line === completions[0] || rl.line === completions[0].trimEnd()) {
+          rl.write(' ');
+        }
+      });
+    }
+    
+    callback(err, result);
+  });
+};
 
 function findExecutableInPath(command) {
   // Get the PATH environment variable
