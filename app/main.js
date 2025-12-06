@@ -64,7 +64,7 @@ function completer(line) {
     if (hits.length === 1) {
       // Return the completion string with a space appended
       // This tells readline to complete and add a space
-      return [[hits[0]], line];
+      return [[hits[0] + ' '], line];
     }
     
     // Multiple matches - return them for display
