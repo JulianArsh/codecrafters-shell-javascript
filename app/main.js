@@ -7,10 +7,10 @@ const { Writable, Readable } = require("stream");
 let rlGlobal = null;
 let lastLine = null;
 let lastMatches = null;
-let commandHistory = [];
+let commandHistory = []; // Store command history
 
 function completer(line) {
-  const builtins = ["cd", "echo", "exit", "history", "pwd", "type"];
+  const builtins = ["cd", "echo", "exit", "pwd", "type", "history"];
   
   if (!line.includes(' ')) {
     let hits = builtins.filter((cmd) => cmd.startsWith(line));
@@ -412,7 +412,7 @@ function splitByPipe(commandLine) {
   return commands;
 }
 
-const builtins = ["cd", "echo", "exit", "history", "pwd", "type"];
+const builtins = ["cd", "echo", "exit", "pwd", "type", "history"];
 
 function isBuiltin(command) {
   return builtins.includes(command);
@@ -430,13 +430,6 @@ function executeBuiltin(command, args, inputData, outputStream) {
       outputStream.write(process.cwd() + "\n");
       break;
     
-    case "history":
-      for (let i = 0; i < commandHistory.length; i++) {
-        const num = String(i + 1).padStart(5, ' ');
-        outputStream.write(`${num}  ${commandHistory[i]}\n`);
-      }
-      break;
-    
     case "type":
       if (args.length > 0) {
         const arg = args[0];
@@ -450,6 +443,12 @@ function executeBuiltin(command, args, inputData, outputStream) {
             outputStream.write(`${arg}: not found\n`);
           }
         }
+      }
+      break;
+    
+    case "history":
+      for (let i = 0; i < commandHistory.length; i++) {
+        outputStream.write(`    ${i + 1}  ${commandHistory[i]}\n`);
       }
       break;
     
@@ -642,6 +641,23 @@ function executeSingleCommand(commandLine, callback) {
       outputStream = fs.createWriteStream(null, { fd: outputFd });
     }
     
+    // Handle stderr redirection - create the file even if empty
+    if (redirectError) {
+      const dir = path.dirname(redirectError);
+      if (dir && dir !== '.' && !fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      // Create empty file for stderr redirect (builtins don't write to stderr normally)
+      fs.writeFileSync(redirectError, '');
+    } else if (appendError) {
+      const dir = path.dirname(appendError);
+      if (dir && dir !== '.' && !fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      // Touch the file for append mode
+      fs.appendFileSync(appendError, '');
+    }
+    
     executeBuiltin(command, args, null, outputStream);
     
     if (outputFd !== null) {
@@ -755,10 +771,9 @@ function prompt() {
       return;
     }
     
-    if (trimmedCommand === "history") {
+    if (trimmedCommand === "history" || trimmedCommand.startsWith("history ")) {
       for (let i = 0; i < commandHistory.length; i++) {
-        const num = String(i + 1).padStart(5, ' ');
-        console.log(`${num}  ${commandHistory[i]}`);
+        console.log(`    ${i + 1}  ${commandHistory[i]}`);
       }
       prompt();
       return;
@@ -793,10 +808,27 @@ function prompt() {
       const parts = parsed.args;
       const redirectOutput = parsed.redirectOutput;
       const appendOutput = parsed.appendOutput;
+      const redirectError = parsed.redirectError;
+      const appendError = parsed.appendError;
       
       let output = "";
       if (parts.length > 1) {
         output = parts.slice(1).join(" ");
+      }
+      
+      // Handle stderr redirection - create the file even if empty
+      if (redirectError) {
+        const dir = path.dirname(redirectError);
+        if (dir && dir !== '.' && !fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(redirectError, '');
+      } else if (appendError) {
+        const dir = path.dirname(appendError);
+        if (dir && dir !== '.' && !fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.appendFileSync(appendError, '');
       }
       
       if (redirectOutput) {
