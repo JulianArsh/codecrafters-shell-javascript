@@ -62,12 +62,12 @@ function completer(line) {
       return [[], line];
     }
     
-    // Single match - complete with space (handled by wrapper)
+    // Single match - complete with space
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      shouldAddSpace = true;  // Flag for wrapper to add space
-      return [[hits[0]], line];
+      // Return completion with trailing space
+      return [[hits[0] + ' '], line];
     }
     
     // Multiple matches - find longest common prefix
@@ -80,11 +80,10 @@ function completer(line) {
       commonPrefix = commonPrefix.substring(0, j);
     }
     
-    // If common prefix is longer than what's typed, complete to it
+    // If common prefix is longer than what's typed, complete to it (no space)
     if (commonPrefix.length > line.length) {
       lastLine = null;
       lastMatches = null;
-      shouldAddSpace = false;  // Don't add space for partial completion
       return [[commonPrefix], line];
     }
     
@@ -121,37 +120,11 @@ const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
   completer: completer,
-  terminal: true,
-  completerOnTab: true  // Ensure completer is called on Tab
+  terminal: true
 });
 
 // Store reference globally for completer
 rlGlobal = rl;
-
-// Hook into the completion to add trailing space
-const originalCompleter = rl.completer;
-let shouldAddSpace = false;
-
-rl.completer = function(line, callback) {
-  originalCompleter(line, (err, result) => {
-    if (err) return callback(err, result);
-    
-    const [completions, originalLine] = result;
-    
-    // Only add space if we flagged it (single actual match)
-    if (shouldAddSpace && completions.length === 1 && !line.includes(' ')) {
-      shouldAddSpace = false;
-      // Schedule adding space after completion
-      process.nextTick(() => {
-        if (rl.line === completions[0] || rl.line === completions[0].trimEnd()) {
-          rl.write(' ');
-        }
-      });
-    }
-    
-    callback(err, result);
-  });
-};
 
 function findExecutableInPath(command) {
   // Get the PATH environment variable
