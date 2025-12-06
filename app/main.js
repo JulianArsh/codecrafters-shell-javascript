@@ -2,6 +2,7 @@ const readline = require("readline");
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
+const { Writable, Readable } = require("stream");
 
 let rlGlobal = null;
 let lastLine = null;
@@ -135,11 +136,6 @@ function findExecutableInPath(command) {
   }
   
   return null;
-}
-
-function isBuiltin(command) {
-  const builtins = ["cd", "echo", "exit", "pwd", "type"];
-  return builtins.includes(command);
 }
 
 function parseCommandLine(commandLine) {
@@ -415,81 +411,131 @@ function splitByPipe(commandLine) {
   return commands;
 }
 
-// Execute builtin and return output as string
-function executeBuiltinToString(command, args, inputData) {
-  const builtins = ["cd", "echo", "exit", "pwd", "type"];
-  
-  if (command === "echo") {
-    let output = "";
-    if (args.length > 0) {
-      output = args.join(" ");
-    }
-    return output + '\n';
-  } else if (command === "type") {
-    if (args.length > 0) {
-      const arg = args[0];
-      if (builtins.includes(arg)) {
-        return `${arg} is a shell builtin\n`;
-      } else {
-        const executablePath = findExecutableInPath(arg);
-        if (executablePath) {
-          return `${arg} is ${executablePath}\n`;
-        } else {
-          return `${arg}: not found\n`;
-        }
-      }
-    }
-    return "";
-  } else if (command === "pwd") {
-    return process.cwd() + '\n';
-  }
-  
-  return "";
+const builtins = ["cd", "echo", "exit", "pwd", "type"];
+
+function isBuiltin(command) {
+  return builtins.includes(command);
 }
 
-function executePipeline(commandLine) {
+// Execute a builtin command with custom input/output streams
+function executeBuiltin(command, args, inputData, outputStream) {
+  switch (command) {
+    case "echo":
+      const output = args.join(" ");
+      outputStream.write(output + "\n");
+      break;
+    
+    case "pwd":
+      outputStream.write(process.cwd() + "\n");
+      break;
+    
+    case "type":
+      if (args.length > 0) {
+        const arg = args[0];
+        if (builtins.includes(arg)) {
+          outputStream.write(`${arg} is a shell builtin\n`);
+        } else {
+          const executablePath = findExecutableInPath(arg);
+          if (executablePath) {
+            outputStream.write(`${arg} is ${executablePath}\n`);
+          } else {
+            outputStream.write(`${arg}: not found\n`);
+          }
+        }
+      }
+      break;
+    
+    case "cd":
+      let targetDir;
+      if (args.length === 0) {
+        targetDir = process.env.HOME || '/';
+      } else if (args[0] === '~') {
+        targetDir = process.env.HOME || '/';
+      } else if (args[0].startsWith('~/')) {
+        targetDir = path.join(process.env.HOME || '/', args[0].slice(2));
+      } else {
+        targetDir = args[0];
+      }
+      
+      try {
+        process.chdir(targetDir);
+      } catch (err) {
+        outputStream.write(`cd: ${targetDir}: No such file or directory\n`);
+      }
+      break;
+    
+    case "exit":
+      const exitCode = args.length > 0 ? parseInt(args[0], 10) || 0 : 0;
+      process.exit(exitCode);
+      break;
+  }
+}
+
+function executePipeline(commandLine, callback) {
   const commands = splitByPipe(commandLine);
   
   if (commands.length === 0) {
+    callback();
     return;
   }
   
   if (commands.length === 1) {
-    executeCommand(commands[0]);
+    executeSingleCommand(commands[0], callback);
     return;
   }
   
-  // Parse all commands to check if they are builtins
+  // Parse all commands first
   const parsedCommands = commands.map(cmd => {
     const parsed = parseCommandLine(cmd);
     return {
-      command: parsed.args[0] || "",
+      command: parsed.args[0],
       args: parsed.args.slice(1),
-      isBuiltin: isBuiltin(parsed.args[0] || "")
+      isBuiltin: isBuiltin(parsed.args[0])
     };
   });
   
-  // Handle pipeline execution
+  // Execute pipeline
   let currentInput = null;
   const processes = [];
   
   for (let i = 0; i < parsedCommands.length; i++) {
     const { command, args, isBuiltin: isBuiltinCmd } = parsedCommands[i];
-    
-    if (!command) continue;
+    const isLast = i === parsedCommands.length - 1;
+    const isFirst = i === 0;
     
     if (isBuiltinCmd) {
-      // Execute builtin with current input
-      const output = executeBuiltinToString(command, args, currentInput);
-      
-      if (i === parsedCommands.length - 1) {
+      // For builtin commands
+      if (isLast) {
         // Last command - output to stdout
-        process.stdout.write(output);
-        prompt();
-        return;
+        executeBuiltin(command, args, currentInput, process.stdout);
+        
+        // Close any remaining processes
+        if (currentInput && currentInput.destroy) {
+          // Drain the input
+          currentInput.on('data', () => {});
+          currentInput.on('end', () => {});
+        }
       } else {
-        // Not last command - pass output to next command
-        currentInput = output;
+        // Not last - need to capture output for next command
+        const chunks = [];
+        const outputStream = new Writable({
+          write(chunk, encoding, cb) {
+            chunks.push(chunk);
+            cb();
+          }
+        });
+        
+        executeBuiltin(command, args, currentInput, outputStream);
+        outputStream.end();
+        
+        // Create readable stream from output
+        const outputData = Buffer.concat(chunks);
+        currentInput = new Readable({
+          read() {
+            this.push(outputData);
+            this.push(null);
+          }
+        });
       }
     } else {
       // External command
@@ -497,68 +543,61 @@ function executePipeline(commandLine) {
       
       if (!executablePath) {
         console.log(`${command}: command not found`);
-        prompt();
+        callback();
         return;
       }
       
       const spawnOptions = {
-        stdio: ['pipe', 'pipe', 'inherit']
+        stdio: [
+          isFirst ? 'inherit' : 'pipe',
+          isLast ? 'inherit' : 'pipe',
+          'inherit'
+        ]
       };
       
       const proc = spawn(executablePath, args, spawnOptions);
       
-      // If there's input from previous command, write it
-      if (currentInput !== null) {
-        proc.stdin.write(currentInput);
-        proc.stdin.end();
+      // Connect input from previous command
+      if (currentInput && !isFirst) {
+        currentInput.pipe(proc.stdin);
       }
       
-      if (i === parsedCommands.length - 1) {
-        // Last command - pipe to stdout
-        proc.stdout.pipe(process.stdout);
-        
-        proc.on('close', () => {
-          prompt();
-        });
-      } else {
-        // Not last command - collect output
-        let output = '';
-        proc.stdout.on('data', (data) => {
-          output += data.toString();
-        });
-        
-        proc.on('close', () => {
-          currentInput = output;
-          
-          // Continue with next command
-          const nextIndex = i + 1;
-          if (nextIndex < parsedCommands.length) {
-            const nextCmd = parsedCommands[nextIndex];
-            
-            if (nextCmd.isBuiltin) {
-              const builtinOutput = executeBuiltinToString(nextCmd.command, nextCmd.args, currentInput);
-              
-              if (nextIndex === parsedCommands.length - 1) {
-                process.stdout.write(builtinOutput);
-                prompt();
-              }
-            }
-          }
-        });
+      // Set current input for next command
+      if (!isLast) {
+        currentInput = proc.stdout;
       }
       
       processes.push(proc);
-      
-      // If this is not the last command and it's an external command,
-      // we need to wait for it to complete before continuing
-      if (i < parsedCommands.length - 1) {
-        return; // The close handler will continue execution
-      }
     }
+  }
+  
+  // Wait for all external processes to complete
+  if (processes.length > 0) {
+    let completed = 0;
+    const total = processes.length;
+    
+    processes.forEach((proc) => {
+      proc.on('close', () => {
+        completed++;
+        if (completed === total) {
+          callback();
+        }
+      });
+      
+      proc.on('error', (err) => {
+        completed++;
+        if (completed === total) {
+          callback();
+        }
+      });
+    });
+  } else {
+    // All commands were builtins
+    callback();
   }
 }
 
-function executeCommand(commandLine) {
+function executeSingleCommand(commandLine, callback) {
   const parsed = parseCommandLine(commandLine.trim());
   const parts = parsed.args;
   const redirectOutput = parsed.redirectOutput;
@@ -567,16 +606,49 @@ function executeCommand(commandLine) {
   const appendError = parsed.appendError;
   
   if (parts.length === 0) {
+    callback();
     return;
   }
   
   const command = parts[0];
   const args = parts.slice(1);
   
+  // Check if it's a builtin
+  if (isBuiltin(command)) {
+    let outputStream = process.stdout;
+    let outputFd = null;
+    
+    if (redirectOutput) {
+      const dir = path.dirname(redirectOutput);
+      if (dir && dir !== '.' && !fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      outputFd = fs.openSync(redirectOutput, 'w');
+      outputStream = fs.createWriteStream(null, { fd: outputFd });
+    } else if (appendOutput) {
+      const dir = path.dirname(appendOutput);
+      if (dir && dir !== '.' && !fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      outputFd = fs.openSync(appendOutput, 'a');
+      outputStream = fs.createWriteStream(null, { fd: outputFd });
+    }
+    
+    executeBuiltin(command, args, null, outputStream);
+    
+    if (outputFd !== null) {
+      outputStream.end();
+    }
+    
+    callback();
+    return;
+  }
+  
   const executablePath = findExecutableInPath(command);
   
   if (!executablePath) {
     console.log(`${command}: command not found`);
+    callback();
     return;
   }
   
@@ -588,73 +660,78 @@ function executeCommand(commandLine) {
   let stdoutFd = null;
   let stderrFd = null;
   
-  try {
-    if (redirectOutput) {
-      const dir = path.dirname(redirectOutput);
-      if (dir && dir !== '.' && !fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      stdoutFd = fs.openSync(redirectOutput, 'w');
-      spawnOptions.stdio[1] = stdoutFd;
-    } else if (appendOutput) {
-      const dir = path.dirname(appendOutput);
-      if (dir && dir !== '.' && !fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      stdoutFd = fs.openSync(appendOutput, 'a');
-      spawnOptions.stdio[1] = stdoutFd;
+  if (redirectOutput) {
+    const dir = path.dirname(redirectOutput);
+    if (dir && dir !== '.' && !fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
-    
-    if (redirectError) {
-      const dir = path.dirname(redirectError);
-      if (dir && dir !== '.' && !fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      stderrFd = fs.openSync(redirectError, 'w');
-      spawnOptions.stdio[2] = stderrFd;
-    } else if (appendError) {
-      const dir = path.dirname(appendError);
-      if (dir && dir !== '.' && !fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      stderrFd = fs.openSync(appendError, 'a');
-      spawnOptions.stdio[2] = stderrFd;
+    stdoutFd = fs.openSync(redirectOutput, 'w');
+    spawnOptions.stdio[1] = stdoutFd;
+  } else if (appendOutput) {
+    const dir = path.dirname(appendOutput);
+    if (dir && dir !== '.' && !fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
     }
-    
-    const proc = spawn(executablePath, args, spawnOptions);
-    
-    proc.on('close', () => {
-      if (stdoutFd !== null) {
-        fs.closeSync(stdoutFd);
-      }
-      if (stderrFd !== null) {
-        fs.closeSync(stderrFd);
-      }
-    });
-    
-    proc.on('error', (err) => {
-      console.log(`${command}: command not found`);
-      if (stdoutFd !== null) {
-        fs.closeSync(stdoutFd);
-      }
-      if (stderrFd !== null) {
-        fs.closeSync(stderrFd);
-      }
-    });
-  } catch (err) {
+    stdoutFd = fs.openSync(appendOutput, 'a');
+    spawnOptions.stdio[1] = stdoutFd;
+  }
+  
+  if (redirectError) {
+    const dir = path.dirname(redirectError);
+    if (dir && dir !== '.' && !fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    stderrFd = fs.openSync(redirectError, 'w');
+    spawnOptions.stdio[2] = stderrFd;
+  } else if (appendError) {
+    const dir = path.dirname(appendError);
+    if (dir && dir !== '.' && !fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    stderrFd = fs.openSync(appendError, 'a');
+    spawnOptions.stdio[2] = stderrFd;
+  }
+  
+  const proc = spawn(executablePath, args, spawnOptions);
+  
+  proc.on('close', () => {
     if (stdoutFd !== null) {
       fs.closeSync(stdoutFd);
     }
     if (stderrFd !== null) {
       fs.closeSync(stderrFd);
     }
-  }
+    callback();
+  });
+  
+  proc.on('error', () => {
+    console.log(`${command}: command not found`);
+    if (stdoutFd !== null) {
+      fs.closeSync(stdoutFd);
+    }
+    if (stderrFd !== null) {
+      fs.closeSync(stderrFd);
+    }
+    callback();
+  });
 }
 
 function prompt() {
   rl.question("$ ", (command) => {
     const trimmedCommand = command.trim();
     
+    if (trimmedCommand.length === 0) {
+      prompt();
+      return;
+    }
+    
+    // Check if command contains a pipe
+    if (trimmedCommand.includes('|')) {
+      executePipeline(trimmedCommand, prompt);
+      return;
+    }
+    
+    // Handle builtins directly (for non-pipeline commands)
     if (trimmedCommand === "exit" || trimmedCommand.startsWith("exit ")) {
       const parts = trimmedCommand.split(/\s+/);
       const exitCode = parts.length > 1 ? parseInt(parts[1], 10) || 0 : 0;
@@ -695,9 +772,7 @@ function prompt() {
       const parsed = parseCommandLine(trimmedCommand);
       const parts = parsed.args;
       const redirectOutput = parsed.redirectOutput;
-      const redirectError = parsed.redirectError;
       const appendOutput = parsed.appendOutput;
-      const appendError = parsed.appendError;
       
       let output = "";
       if (parts.length > 1) {
@@ -720,19 +795,12 @@ function prompt() {
         console.log(output);
       }
       
-      if (redirectError) {
-        fs.writeFileSync(redirectError, '');
-      } else if (appendError) {
-        fs.appendFileSync(appendError, '');
-      }
-      
       prompt();
       return;
     }
     
     if (trimmedCommand.startsWith("type ")) {
       const arg = trimmedCommand.slice(5).trim();
-      const builtins = ["cd", "echo", "exit", "pwd", "type"];
       
       if (builtins.includes(arg)) {
         console.log(`${arg} is a shell builtin`);
@@ -749,16 +817,8 @@ function prompt() {
       return;
     }
     
-    if (trimmedCommand.includes('|')) {
-      executePipeline(trimmedCommand);
-      return;
-    }
-    
-    executeCommand(trimmedCommand);
-    
-    setTimeout(() => {
-      prompt();
-    }, 100);
+    // Execute single external command
+    executeSingleCommand(trimmedCommand, prompt);
   });
 }
 
