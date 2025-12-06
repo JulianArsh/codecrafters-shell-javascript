@@ -383,6 +383,14 @@ function executeCommand(commandLine) {
   // Execute the command with arguments
   const result = spawnSync(executablePath, args, spawnOptions);
   
+  // Close file descriptors if they were opened
+  if (stdoutFd !== 'inherit' && typeof stdoutFd === 'number') {
+    fs.closeSync(stdoutFd);
+  }
+  if (stderrFd !== 'inherit' && typeof stderrFd === 'number') {
+    fs.closeSync(stderrFd);
+  }
+  
   // If there was an error spawning the process, handle it
   if (result.error) {
     console.log(`${command}: command not found`);
