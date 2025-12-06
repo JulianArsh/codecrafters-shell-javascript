@@ -73,11 +73,11 @@ function completer(line) {
       return [[], line];
     }
     
-    // If there's exactly one match, return completion with trailing space
+    // If there's exactly one match, complete it with a trailing space
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // Return array with the single completion including space
+      // Return the full match with trailing space as the only completion
       return [[hits[0] + ' '], line];
     }
     
@@ -94,8 +94,24 @@ function completer(line) {
       lastMatches = null;
       return [[], line];
     } else {
-      // First tab press - ring the bell and save state
-      // Directly write bell character to the output
+      // First tab press - find common prefix
+      let commonPrefix = hits[0];
+      for (let i = 1; i < hits.length; i++) {
+        let j = 0;
+        while (j < commonPrefix.length && j < hits[i].length && commonPrefix[j] === hits[i][j]) {
+          j++;
+        }
+        commonPrefix = commonPrefix.substring(0, j);
+      }
+      
+      // If there's a common prefix longer than what's typed, complete to it
+      if (commonPrefix.length > line.length) {
+        lastLine = null;
+        lastMatches = null;
+        return [[commonPrefix], line];
+      }
+      
+      // Otherwise ring the bell and save state for double-tab
       if (rlGlobal && rlGlobal.output) {
         rlGlobal.output.write('\x07');
       } else {
