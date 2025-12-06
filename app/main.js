@@ -50,6 +50,9 @@ function completer(line) {
     hits = hits.concat(Array.from(foundExecutables));
     hits.sort();
     
+    // Debug logging
+    console.error(`DEBUG: line="${line}", hits=[${hits.map(h => `"${h}"`).join(', ')}], count=${hits.length}`);
+    
     // No matches - ring bell
     if (hits.length === 0) {
       if (rlGlobal && rlGlobal.output) {
@@ -66,7 +69,9 @@ function completer(line) {
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // Return the completion WITH a trailing space
+      // Debug: log what we're returning
+      console.error(`DEBUG: Single match found: "${hits[0]}", line: "${line}", returning: "${hits[0] + ' '}"`);
+      // For single match, return with trailing space
       return [[hits[0] + ' '], line];
     }
     
