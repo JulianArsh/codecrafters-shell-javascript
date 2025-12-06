@@ -62,15 +62,33 @@ function completer(line) {
       return [[], line];
     }
     
-    // Single match - complete with space
+    // Single match - complete with space (handled by wrapper)
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
       return [[hits[0]], line];
     }
     
-    // Multiple matches - double-tab behavior
+    // Multiple matches - find longest common prefix
+    let commonPrefix = hits[0];
+    for (let i = 1; i < hits.length; i++) {
+      let j = 0;
+      while (j < commonPrefix.length && j < hits[i].length && commonPrefix[j] === hits[i][j]) {
+        j++;
+      }
+      commonPrefix = commonPrefix.substring(0, j);
+    }
+    
+    // If common prefix is longer than what's typed, complete to it
+    if (commonPrefix.length > line.length) {
+      lastLine = null;
+      lastMatches = null;
+      return [[commonPrefix], line];
+    }
+    
+    // Check if this is a double-tab (same line and matches as before)
     if (lastLine === line && lastMatches && JSON.stringify(lastMatches) === JSON.stringify(hits)) {
+      // Second tab press - display all matches
       console.log();
       console.log(hits.join('  '));
       if (rlGlobal) {
@@ -79,32 +97,17 @@ function completer(line) {
       lastLine = null;
       lastMatches = null;
       return [[], line];
-    } else {
-      // Find common prefix
-      let commonPrefix = hits[0];
-      for (let i = 1; i < hits.length; i++) {
-        let j = 0;
-        while (j < commonPrefix.length && j < hits[i].length && commonPrefix[j] === hits[i][j]) {
-          j++;
-        }
-        commonPrefix = commonPrefix.substring(0, j);
-      }
-      
-      if (commonPrefix.length > line.length) {
-        lastLine = null;
-        lastMatches = null;
-        return [[commonPrefix], line];
-      }
-      
-      if (rlGlobal && rlGlobal.output) {
-        rlGlobal.output.write('\x07');
-      } else {
-        process.stdout.write('\x07');
-      }
-      lastLine = line;
-      lastMatches = hits;
-      return [[], line];
     }
+    
+    // First tab with no additional completion possible - ring bell and save state
+    if (rlGlobal && rlGlobal.output) {
+      rlGlobal.output.write('\x07');
+    } else {
+      process.stdout.write('\x07');
+    }
+    lastLine = line;
+    lastMatches = hits;
+    return [[], line];
   }
   
   lastLine = null;
