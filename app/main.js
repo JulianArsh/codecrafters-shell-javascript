@@ -318,8 +318,12 @@ function executeCommand(commandLine) {
   const appendOutput = parsed.appendOutput;
   const appendError = parsed.appendError;
   
-  // Debug logging
-  console.error(`DEBUG: parsed =`, JSON.stringify(parsed));
+  // Debug logging (write to a file instead of stderr to avoid interfering with tests)
+  try {
+    fs.appendFileSync('/tmp/shell-debug.log', `Command: ${commandLine}\nParsed: ${JSON.stringify(parsed)}\n\n`);
+  } catch (e) {
+    // Ignore errors
+  }
   
   if (parts.length === 0) {
     return;
