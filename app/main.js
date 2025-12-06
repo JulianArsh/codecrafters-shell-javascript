@@ -67,8 +67,8 @@ function completer(line) {
       return [[hits[0] + ' '], line];
     }
     
-    // Multiple matches - return them for display
-    return [hits, line];
+    // Multiple matches - return them for display (add space to each for consistency)
+    return [hits.map(h => h + ' '), line];
   }
   
   // If there's a space, don't autocomplete
