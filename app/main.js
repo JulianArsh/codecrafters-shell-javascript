@@ -58,24 +58,49 @@ function completer(line) {
     // Add found executables to hits
     hits = hits.concat(Array.from(foundExecutables));
     
+    // Sort hits alphabetically
+    hits.sort();
+    
     // If there are no matches, ring the bell
     if (hits.length === 0) {
       process.stdout.write('\x07');
+      lastLine = null;
+      lastMatches = null;
       return [[], line];
     }
     
     // If there's exactly one match, return completion with trailing space
     if (hits.length === 1) {
+      lastLine = null;
+      lastMatches = null;
       // Return the completion string with a space appended
       // This tells readline to complete and add a space
       return [[hits[0] + ' '], line];
     }
     
-    // Multiple matches - return them for display (add space to each for consistency)
-    return [hits.map(h => h + ' '), line];
+    // Multiple matches - implement double-tab behavior
+    if (lastLine === line && lastMatches && JSON.stringify(lastMatches) === JSON.stringify(hits)) {
+      // Second tab press - display all matches
+      process.stdout.write('\n' + hits.join('  ') + '\n');
+      // Force readline to redisplay the prompt and line
+      if (rlGlobal) {
+        rlGlobal._refreshLine();
+      }
+      lastLine = null;
+      lastMatches = null;
+      return [[], line];
+    } else {
+      // First tab press - ring the bell and save state
+      process.stdout.write('\x07');
+      lastLine = line;
+      lastMatches = hits;
+      return [[], line];
+    }
   }
   
   // If there's a space, don't autocomplete
+  lastLine = null;
+  lastMatches = null;
   return [[], line];
 }
 
