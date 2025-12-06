@@ -19,6 +19,12 @@ function completer(line) {
     if (hits.length === 1) {
       return [[hits[0] + ' '], line];
     }
+    
+    // If there are no matches, ring the bell
+    if (hits.length === 0) {
+      process.stdout.write('\x07');
+    }
+    
     return [hits.length ? hits : [], line];
   }
   
