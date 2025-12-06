@@ -66,13 +66,15 @@ function completer(line) {
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // After completing, we need to manually add a space
-      // Schedule the space to be written after readline processes the completion
-      setImmediate(() => {
-        if (rlGlobal && rlGlobal.line === hits[0]) {
-          rlGlobal.write(' ');
+      // Add the space by manually updating the line after completion
+      setTimeout(() => {
+        if (rlGlobal && rlGlobal.line.trim() === hits[0].trim()) {
+          // Directly manipulate the line to add a space
+          rlGlobal.line = hits[0] + ' ';
+          rlGlobal.cursor = rlGlobal.line.length;
+          rlGlobal._refreshLine();
         }
-      });
+      }, 0);
       return [[hits[0]], line];
     }
     
