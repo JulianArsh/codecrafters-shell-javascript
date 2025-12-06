@@ -66,8 +66,14 @@ function completer(line) {
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // Return completion - the space will be added by returning it in the completion
-      return [[hits[0] + ' '], line];
+      // After completing, we need to manually add a space
+      // Schedule the space to be written after readline processes the completion
+      setImmediate(() => {
+        if (rlGlobal && rlGlobal.line === hits[0]) {
+          rlGlobal.write(' ');
+        }
+      });
+      return [[hits[0]], line];
     }
     
     // Multiple matches - find longest common prefix
