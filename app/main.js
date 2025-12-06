@@ -468,6 +468,18 @@ function prompt() {
       return;
     }
     
+    // Debug command to view log
+    if (trimmedCommand === "debug") {
+      try {
+        const log = fs.readFileSync('/tmp/shell-debug.log', 'utf8');
+        console.log(log);
+      } catch (e) {
+        console.log("No debug log found");
+      }
+      prompt();
+      return;
+    }
+    
     // Try to execute as external command
     executeCommand(trimmedCommand);
     
