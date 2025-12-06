@@ -80,14 +80,11 @@ function completer(line) {
       commonPrefix = commonPrefix.substring(0, j);
     }
     
-    // If common prefix is longer than what's typed, complete to it (with space if exact match)
+    // If common prefix is longer than what's typed, complete to it (NO space - multiple matches exist)
     if (commonPrefix.length > line.length) {
       lastLine = null;
       lastMatches = null;
-      // Check if this common prefix is an exact match to one of the hits
-      if (hits.includes(commonPrefix)) {
-        return [[commonPrefix + ' '], line];
-      }
+      // Don't add space even if commonPrefix matches one of the hits - there are still multiple matches
       return [[commonPrefix], line];
     }
     
