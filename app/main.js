@@ -3,9 +3,33 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
+// Custom completer function for tab completion
+function completer(line) {
+  const builtins = ["echo", "exit"];
+  
+  // Get the current word being typed (everything up to cursor)
+  const trimmedLine = line.trimStart();
+  
+  // Only autocomplete if we're at the start of the command (no spaces yet)
+  if (!trimmedLine.includes(' ')) {
+    const hits = builtins.filter((cmd) => cmd.startsWith(trimmedLine));
+    
+    // Return [completions, original string]
+    // If there's exactly one match, add a space after it
+    if (hits.length === 1) {
+      return [[hits[0] + ' '], line];
+    }
+    return [hits.length ? hits : [], line];
+  }
+  
+  return [[], line];
+}
+
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
+  completer: completer,
+  terminal: true
 });
 
 function findExecutableInPath(command) {
