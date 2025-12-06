@@ -34,6 +34,25 @@ function loadHistoryFromFile() {
   }
 }
 
+// Save history to HISTFILE on exit
+function saveHistoryToFile() {
+  const histfile = process.env.HISTFILE;
+  if (histfile) {
+    try {
+      const dir = path.dirname(histfile);
+      if (dir && dir !== '.' && !fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      
+      // Write all commands to the file with a trailing newline
+      const historyContent = commandHistory.join('\n') + '\n';
+      fs.writeFileSync(histfile, historyContent, 'utf-8');
+    } catch (err) {
+      // Silently fail if we can't write the history file
+    }
+  }
+}
+
 function completer(line) {
   const builtins = ["cd", "echo", "exit", "pwd", "type", "history"];
   
@@ -576,6 +595,8 @@ function executeBuiltin(command, args, inputData, outputStream) {
       break;
     
     case "exit":
+      // Save history before exiting
+      saveHistoryToFile();
       const exitCode = args.length > 0 ? parseInt(args[0], 10) || 0 : 0;
       process.exit(exitCode);
       break;
@@ -864,6 +885,8 @@ function prompt() {
     
     // Handle builtins directly (for non-pipeline commands)
     if (trimmedCommand === "exit" || trimmedCommand.startsWith("exit ")) {
+      // Save history before exiting
+      saveHistoryToFile();
       const parts = trimmedCommand.split(/\s+/);
       const exitCode = parts.length > 1 ? parseInt(parts[1], 10) || 0 : 0;
       process.exit(exitCode);
