@@ -57,18 +57,18 @@ function completer(line) {
     // If there are no matches, ring the bell
     if (hits.length === 0) {
       process.stdout.write('\x07');
-      return [[], trimmedLine];
+      return [[], line];
     }
     
     // If there's exactly one match, return completion with trailing space
     if (hits.length === 1) {
       // Return the completion string with a space appended
       // This tells readline to complete and add a space
-      return [[hits[0]], trimmedLine];
+      return [[hits[0]], line];
     }
     
     // Multiple matches - return them for display
-    return [hits, trimmedLine];
+    return [hits, line];
   }
   
   // If there's a space, don't autocomplete
