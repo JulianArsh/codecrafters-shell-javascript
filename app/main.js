@@ -7,10 +7,10 @@ const { Writable, Readable } = require("stream");
 let rlGlobal = null;
 let lastLine = null;
 let lastMatches = null;
-let commandHistory = []; // Store command history
+let commandHistory = [];
 
 function completer(line) {
-  const builtins = ["cd", "echo", "exit", "pwd", "type", "history"];
+  const builtins = ["cd", "echo", "exit", "history", "pwd", "type"];
   
   if (!line.includes(' ')) {
     let hits = builtins.filter((cmd) => cmd.startsWith(line));
@@ -412,7 +412,7 @@ function splitByPipe(commandLine) {
   return commands;
 }
 
-const builtins = ["cd", "echo", "exit", "pwd", "type", "history"];
+const builtins = ["cd", "echo", "exit", "history", "pwd", "type"];
 
 function isBuiltin(command) {
   return builtins.includes(command);
@@ -430,6 +430,13 @@ function executeBuiltin(command, args, inputData, outputStream) {
       outputStream.write(process.cwd() + "\n");
       break;
     
+    case "history":
+      for (let i = 0; i < commandHistory.length; i++) {
+        const num = String(i + 1).padStart(5, ' ');
+        outputStream.write(`${num}  ${commandHistory[i]}\n`);
+      }
+      break;
+    
     case "type":
       if (args.length > 0) {
         const arg = args[0];
@@ -443,12 +450,6 @@ function executeBuiltin(command, args, inputData, outputStream) {
             outputStream.write(`${arg}: not found\n`);
           }
         }
-      }
-      break;
-    
-    case "history":
-      for (let i = 0; i < commandHistory.length; i++) {
-        outputStream.write(`    ${i + 1}  ${commandHistory[i]}\n`);
       }
       break;
     
@@ -625,8 +626,6 @@ function executeSingleCommand(commandLine, callback) {
     let outputStream = process.stdout;
     let outputFd = null;
     
-    // For builtins, only handle stdout redirection (not stderr)
-    // because builtins typically don't write to stderr
     if (redirectOutput) {
       const dir = path.dirname(redirectOutput);
       if (dir && dir !== '.' && !fs.existsSync(dir)) {
@@ -642,9 +641,6 @@ function executeSingleCommand(commandLine, callback) {
       outputFd = fs.openSync(appendOutput, 'a');
       outputStream = fs.createWriteStream(null, { fd: outputFd });
     }
-    
-    // Don't handle stderr redirection for builtins that only write to stdout
-    // The redirectError and appendError are simply ignored for echo, pwd, type, history
     
     executeBuiltin(command, args, null, outputStream);
     
@@ -759,6 +755,15 @@ function prompt() {
       return;
     }
     
+    if (trimmedCommand === "history") {
+      for (let i = 0; i < commandHistory.length; i++) {
+        const num = String(i + 1).padStart(5, ' ');
+        console.log(`${num}  ${commandHistory[i]}`);
+      }
+      prompt();
+      return;
+    }
+    
     if (trimmedCommand === "cd" || trimmedCommand.startsWith("cd ")) {
       const parsed = parseCommandLine(trimmedCommand);
       const parts = parsed.args;
@@ -827,14 +832,6 @@ function prompt() {
         } else {
           console.log(`${arg}: not found`);
         }
-      }
-      prompt();
-      return;
-    }
-    
-    if (trimmedCommand === "history" || trimmedCommand.startsWith("history ")) {
-      for (let i = 0; i < commandHistory.length; i++) {
-        console.log(`    ${i + 1}  ${commandHistory[i]}`);
       }
       prompt();
       return;
