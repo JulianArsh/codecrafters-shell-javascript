@@ -6,7 +6,6 @@ const { spawnSync } = require("child_process");
 let rlGlobal = null;
 let lastLine = null;
 let lastMatches = null;
-let justCompletedSingle = false;
 
 function completer(line) {
   const builtins = ["cd", "echo", "exit", "pwd", "type"];
@@ -64,8 +63,8 @@ function completer(line) {
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      justCompletedSingle = true;
-      return [[hits[0]], line];
+      // Return the match with a trailing space
+      return [[hits[0] + ' '], line];
     }
     
     let commonPrefix = hits[0];
@@ -117,20 +116,6 @@ const rl = readline.createInterface({
 });
 
 rlGlobal = rl;
-
-const originalRefreshLine = rl._refreshLine;
-rl._refreshLine = function() {
-  originalRefreshLine.call(this);
-  
-  if (justCompletedSingle) {
-    justCompletedSingle = false;
-    process.nextTick(() => {
-      if (rlGlobal && !rlGlobal.line.includes(' ')) {
-        rlGlobal.write(' ');
-      }
-    });
-  }
-};
 
 function findExecutableInPath(command) {
   const pathEnv = process.env.PATH || "";
