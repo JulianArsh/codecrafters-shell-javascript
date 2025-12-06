@@ -66,7 +66,7 @@ function completer(line) {
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // Return the completion WITH a space added
+      // Return completion - the space will be added by returning it in the completion
       return [[hits[0] + ' '], line];
     }
     
