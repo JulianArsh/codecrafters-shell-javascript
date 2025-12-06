@@ -341,17 +341,57 @@ function executeCommand(commandLine) {
   // Determine stdout file descriptor
   let stdoutFd = 'inherit';
   if (redirectOutput) {
-    stdoutFd = fs.openSync(redirectOutput, 'w');
+    try {
+      // Ensure parent directory exists
+      const dir = path.dirname(redirectOutput);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      stdoutFd = fs.openSync(redirectOutput, 'w');
+    } catch (err) {
+      console.error(`Error opening ${redirectOutput}: ${err.message}`);
+      return;
+    }
   } else if (appendOutput) {
-    stdoutFd = fs.openSync(appendOutput, 'a');
+    try {
+      // Ensure parent directory exists
+      const dir = path.dirname(appendOutput);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      stdoutFd = fs.openSync(appendOutput, 'a');
+    } catch (err) {
+      console.error(`Error opening ${appendOutput}: ${err.message}`);
+      return;
+    }
   }
   
   // Determine stderr file descriptor
   let stderrFd = 'inherit';
   if (redirectError) {
-    stderrFd = fs.openSync(redirectError, 'w');
+    try {
+      // Ensure parent directory exists
+      const dir = path.dirname(redirectError);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      stderrFd = fs.openSync(redirectError, 'w');
+    } catch (err) {
+      console.error(`Error opening ${redirectError}: ${err.message}`);
+      return;
+    }
   } else if (appendError) {
-    stderrFd = fs.openSync(appendError, 'a');
+    try {
+      // Ensure parent directory exists
+      const dir = path.dirname(appendError);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      stderrFd = fs.openSync(appendError, 'a');
+    } catch (err) {
+      console.error(`Error opening ${appendError}: ${err.message}`);
+      return;
+    }
   }
   
   // Set stdio
