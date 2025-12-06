@@ -66,6 +66,7 @@ function completer(line) {
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
+      shouldAddSpace = true;  // Flag for wrapper to add space
       return [[hits[0]], line];
     }
     
@@ -83,6 +84,7 @@ function completer(line) {
     if (commonPrefix.length > line.length) {
       lastLine = null;
       lastMatches = null;
+      shouldAddSpace = false;  // Don't add space for partial completion
       return [[commonPrefix], line];
     }
     
@@ -128,14 +130,17 @@ rlGlobal = rl;
 
 // Hook into the completion to add trailing space
 const originalCompleter = rl.completer;
+let shouldAddSpace = false;
+
 rl.completer = function(line, callback) {
   originalCompleter(line, (err, result) => {
     if (err) return callback(err, result);
     
     const [completions, originalLine] = result;
     
-    // If single completion and no space in line, add space after
-    if (completions.length === 1 && !line.includes(' ')) {
+    // Only add space if we flagged it (single actual match)
+    if (shouldAddSpace && completions.length === 1 && !line.includes(' ')) {
+      shouldAddSpace = false;
       // Schedule adding space after completion
       process.nextTick(() => {
         if (rl.line === completions[0] || rl.line === completions[0].trimEnd()) {
