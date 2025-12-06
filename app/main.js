@@ -12,7 +12,47 @@ function completer(line) {
   
   // Only autocomplete if we're at the start of the command (no spaces yet)
   if (!trimmedLine.includes(' ')) {
-    const hits = builtins.filter((cmd) => cmd.startsWith(trimmedLine));
+    // Start with builtin commands
+    let hits = builtins.filter((cmd) => cmd.startsWith(trimmedLine));
+    
+    // Search for executables in PATH
+    const pathEnv = process.env.PATH || "";
+    const directories = pathEnv.split(path.delimiter);
+    const foundExecutables = new Set();
+    
+    for (const dir of directories) {
+      try {
+        // Check if directory exists
+        if (!fs.existsSync(dir)) {
+          continue;
+        }
+        
+        // Read directory contents
+        const files = fs.readdirSync(dir);
+        
+        for (const file of files) {
+          // Check if file starts with the partial command
+          if (file.startsWith(trimmedLine)) {
+            const fullPath = path.join(dir, file);
+            
+            try {
+              // Check if file is executable
+              fs.accessSync(fullPath, fs.constants.X_OK);
+              foundExecutables.add(file);
+            } catch (err) {
+              // Not executable, skip
+              continue;
+            }
+          }
+        }
+      } catch (err) {
+        // Directory read error, continue to next directory
+        continue;
+      }
+    }
+    
+    // Add found executables to hits
+    hits = hits.concat(Array.from(foundExecutables));
     
     // Return [completions, original string]
     // If there's exactly one match, add a space after it
