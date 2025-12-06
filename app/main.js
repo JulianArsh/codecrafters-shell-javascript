@@ -81,7 +81,8 @@ function completer(line) {
     // Multiple matches - implement double-tab behavior
     if (lastLine === line && lastMatches && JSON.stringify(lastMatches) === JSON.stringify(hits)) {
       // Second tab press - display all matches
-      process.stdout.write('\n' + hits.join('  ') + '\n');
+      console.log();
+      console.log(hits.join('  '));
       // Force readline to redisplay the prompt and line
       if (rlGlobal) {
         rlGlobal._refreshLine();
@@ -91,7 +92,12 @@ function completer(line) {
       return [[], line];
     } else {
       // First tab press - ring the bell and save state
-      process.stdout.write('\x07');
+      // Directly write bell character to the output
+      if (rlGlobal && rlGlobal.output) {
+        rlGlobal.output.write('\x07');
+      } else {
+        process.stdout.write('\x07');
+      }
       lastLine = line;
       lastMatches = hits;
       return [[], line];
