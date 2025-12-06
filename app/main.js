@@ -10,7 +10,7 @@ let rlGlobal = null;
 let lastLine = null;
 let lastMatches = null;
 
-// Custom completer function for tab completion
+// Custom completer function for tab completion  
 function completer(line) {
   const builtins = ["echo", "exit", "type"];
   
@@ -26,42 +26,31 @@ function completer(line) {
     
     for (const dir of directories) {
       try {
-        // Check if directory exists
-        if (!fs.existsSync(dir)) {
-          continue;
-        }
+        if (!fs.existsSync(dir)) continue;
         
-        // Read directory contents
         const files = fs.readdirSync(dir);
         
         for (const file of files) {
-          // Check if file starts with the partial command
           if (file.startsWith(line)) {
             const fullPath = path.join(dir, file);
             
             try {
-              // Check if file is executable
               fs.accessSync(fullPath, fs.constants.X_OK);
               foundExecutables.add(file);
             } catch (err) {
-              // Not executable, skip
               continue;
             }
           }
         }
       } catch (err) {
-        // Directory read error, continue to next directory
         continue;
       }
     }
     
-    // Add found executables to hits
     hits = hits.concat(Array.from(foundExecutables));
-    
-    // Sort hits alphabetically
     hits.sort();
     
-    // If there are no matches, ring the bell
+    // No matches - ring bell
     if (hits.length === 0) {
       if (rlGlobal && rlGlobal.output) {
         rlGlobal.output.write('\x07');
@@ -73,21 +62,26 @@ function completer(line) {
       return [[], line];
     }
     
-    // If there's exactly one match, complete it with a trailing space
+    // Single match - complete with space
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // Return the full match with trailing space
-      // The second parameter (line) is what gets replaced
-      return [[hits[0] + ' '], line];
+      // Append space after completion
+      const match = hits[0];
+      // Trick: return array with empty string to trigger completion
+      // but set the line ourselves
+      setTimeout(() => {
+        if (rlGlobal && rlGlobal.line === match) {
+          rlGlobal.write(' ');
+        }
+      }, 0);
+      return [[match], line];
     }
     
-    // Multiple matches - implement double-tab behavior
+    // Multiple matches - double-tab behavior
     if (lastLine === line && lastMatches && JSON.stringify(lastMatches) === JSON.stringify(hits)) {
-      // Second tab press - display all matches
       console.log();
       console.log(hits.join('  '));
-      // Force readline to redisplay the prompt and line
       if (rlGlobal) {
         rlGlobal._refreshLine();
       }
@@ -95,7 +89,7 @@ function completer(line) {
       lastMatches = null;
       return [[], line];
     } else {
-      // First tab press - find common prefix
+      // Find common prefix
       let commonPrefix = hits[0];
       for (let i = 1; i < hits.length; i++) {
         let j = 0;
@@ -105,14 +99,12 @@ function completer(line) {
         commonPrefix = commonPrefix.substring(0, j);
       }
       
-      // If there's a common prefix longer than what's typed, complete to it
       if (commonPrefix.length > line.length) {
         lastLine = null;
         lastMatches = null;
         return [[commonPrefix], line];
       }
       
-      // Otherwise ring the bell and save state for double-tab
       if (rlGlobal && rlGlobal.output) {
         rlGlobal.output.write('\x07');
       } else {
@@ -124,7 +116,6 @@ function completer(line) {
     }
   }
   
-  // If there's a space, don't autocomplete
   lastLine = null;
   lastMatches = null;
   return [[], line];
@@ -139,47 +130,6 @@ const rl = readline.createInterface({
 
 // Store reference globally for completer
 rlGlobal = rl;
-
-// Track if we need to add a space after completion
-let shouldAddSpace = false;
-
-// Listen to line events to detect when tab completion happens
-const originalWrite = rl._insertString;
-rl._insertString = function(c) {
-  if (shouldAddSpace && c !== ' ') {
-    shouldAddSpace = false;
-  }
-  return originalWrite.call(this, c);
-};
-
-// Override _tabComplete to add space after single completion
-const originalTabComplete = rl._tabComplete.bind(rl);
-rl._tabComplete = function() {
-  const line = this.line.slice(0, this.cursor);
-  
-  // Only handle if no space in line (command completion only)
-  if (!line.includes(' ')) {
-    this.completer(line, (err, [completions, originalLine]) => {
-      if (err) {
-        this._writeToOutput('\x07');
-        return;
-      }
-      
-      if (completions.length === 1) {
-        // Single completion - insert it with a space
-        const completion = completions[0];
-        this.line = completion + this.line.slice(this.cursor);
-        this.cursor = completion.length;
-        this._refreshLine();
-      } else {
-        // Multiple completions - use default behavior
-        originalTabComplete();
-      }
-    });
-  } else {
-    originalTabComplete();
-  }
-};
 
 function findExecutableInPath(command) {
   // Get the PATH environment variable
