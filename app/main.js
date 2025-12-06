@@ -618,6 +618,8 @@ function executeSingleCommand(commandLine, callback) {
     let outputStream = process.stdout;
     let outputFd = null;
     
+    // For builtins, only handle stdout redirection (not stderr)
+    // because builtins typically don't write to stderr
     if (redirectOutput) {
       const dir = path.dirname(redirectOutput);
       if (dir && dir !== '.' && !fs.existsSync(dir)) {
@@ -633,6 +635,9 @@ function executeSingleCommand(commandLine, callback) {
       outputFd = fs.openSync(appendOutput, 'a');
       outputStream = fs.createWriteStream(null, { fd: outputFd });
     }
+    
+    // Don't handle stderr redirection for builtins that only write to stdout
+    // The redirectError and appendError are simply ignored for echo, pwd, type
     
     executeBuiltin(command, args, null, outputStream);
     
