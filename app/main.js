@@ -140,6 +140,47 @@ const rl = readline.createInterface({
 // Store reference globally for completer
 rlGlobal = rl;
 
+// Track if we need to add a space after completion
+let shouldAddSpace = false;
+
+// Listen to line events to detect when tab completion happens
+const originalWrite = rl._insertString;
+rl._insertString = function(c) {
+  if (shouldAddSpace && c !== ' ') {
+    shouldAddSpace = false;
+  }
+  return originalWrite.call(this, c);
+};
+
+// Override _tabComplete to add space after single completion
+const originalTabComplete = rl._tabComplete.bind(rl);
+rl._tabComplete = function() {
+  const line = this.line.slice(0, this.cursor);
+  
+  // Only handle if no space in line (command completion only)
+  if (!line.includes(' ')) {
+    this.completer(line, (err, [completions, originalLine]) => {
+      if (err) {
+        this._writeToOutput('\x07');
+        return;
+      }
+      
+      if (completions.length === 1) {
+        // Single completion - insert it with a space
+        const completion = completions[0];
+        this.line = completion + this.line.slice(this.cursor);
+        this.cursor = completion.length;
+        this._refreshLine();
+      } else {
+        // Multiple completions - use default behavior
+        originalTabComplete();
+      }
+    });
+  } else {
+    originalTabComplete();
+  }
+};
+
 function findExecutableInPath(command) {
   // Get the PATH environment variable
   const pathEnv = process.env.PATH || "";
