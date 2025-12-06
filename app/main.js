@@ -10,6 +10,30 @@ let lastMatches = null;
 let commandHistory = []; // Store command history
 let lastAppendedIndex = 0; // Track the last index that was appended to file
 
+// Load history from HISTFILE on startup
+function loadHistoryFromFile() {
+  const histfile = process.env.HISTFILE;
+  if (histfile) {
+    try {
+      if (fs.existsSync(histfile)) {
+        const historyContent = fs.readFileSync(histfile, 'utf-8');
+        const lines = historyContent.split('\n');
+        
+        for (const line of lines) {
+          const trimmedLine = line.trim();
+          if (trimmedLine.length > 0) {
+            commandHistory.push(trimmedLine);
+          }
+        }
+        // Update lastAppendedIndex after loading
+        lastAppendedIndex = commandHistory.length;
+      }
+    } catch (err) {
+      // Silently fail if we can't read the history file
+    }
+  }
+}
+
 function completer(line) {
   const builtins = ["cd", "echo", "exit", "pwd", "type", "history"];
   
@@ -1036,4 +1060,6 @@ function prompt() {
   });
 }
 
+// Load history from HISTFILE before starting the prompt
+loadHistoryFromFile();
 prompt();
