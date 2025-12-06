@@ -6,6 +6,10 @@ const { spawnSync } = require("child_process");
 // Store the readline interface globally so we can access it in the completer
 let rlGlobal = null;
 
+// Track the last line and matches for double-tab behavior
+let lastLine = null;
+let lastMatches = null;
+
 // Custom completer function for tab completion
 function completer(line) {
   const builtins = ["echo", "exit"];
