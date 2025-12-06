@@ -168,44 +168,86 @@ function parseCommandLine(commandLine) {
         redirectOutput = filename;
       }
     } else if (char === '2' && !inSingleQuote && !inDoubleQuote && i + 1 < commandLine.length && commandLine[i + 1] === '>') {
-      // Handle 2> redirection (stderr)
-      if (currentArg.length > 0) {
-        args.push(currentArg);
-        currentArg = "";
-      }
-      
-      i += 2; // Move past '2>'
-      
-      // Skip whitespace after '2>'
-      while (i < commandLine.length && (commandLine[i] === ' ' || commandLine[i] === '\t')) {
-        i++;
-      }
-      
-      // Parse the output filename
-      let filename = "";
-      let inFileQuote = false;
-      let fileQuoteChar = null;
-      
-      while (i < commandLine.length) {
-        const c = commandLine[i];
+      // Handle 2> or 2>> redirection (stderr)
+      if (i + 2 < commandLine.length && commandLine[i + 2] === '>') {
+        // 2>> append stderr
+        if (currentArg.length > 0) {
+          args.push(currentArg);
+          currentArg = "";
+        }
         
-        if ((c === '"' || c === "'") && !inFileQuote) {
-          inFileQuote = true;
-          fileQuoteChar = c;
-          i++;
-        } else if (c === fileQuoteChar && inFileQuote) {
-          inFileQuote = false;
-          fileQuoteChar = null;
-          i++;
-        } else if ((c === ' ' || c === '\t') && !inFileQuote) {
-          break;
-        } else {
-          filename += c;
+        i += 3; // Move past '2>>'
+        
+        // Skip whitespace after '2>>'
+        while (i < commandLine.length && (commandLine[i] === ' ' || commandLine[i] === '\t')) {
           i++;
         }
+        
+        // Parse the output filename
+        let filename = "";
+        let inFileQuote = false;
+        let fileQuoteChar = null;
+        
+        while (i < commandLine.length) {
+          const c = commandLine[i];
+          
+          if ((c === '"' || c === "'") && !inFileQuote) {
+            inFileQuote = true;
+            fileQuoteChar = c;
+            i++;
+          } else if (c === fileQuoteChar && inFileQuote) {
+            inFileQuote = false;
+            fileQuoteChar = null;
+            i++;
+          } else if ((c === ' ' || c === '\t') && !inFileQuote) {
+            break;
+          } else {
+            filename += c;
+            i++;
+          }
+        }
+        
+        appendError = filename;
+      } else {
+        // 2> redirect stderr (overwrite)
+        if (currentArg.length > 0) {
+          args.push(currentArg);
+          currentArg = "";
+        }
+        
+        i += 2; // Move past '2>'
+        
+        // Skip whitespace after '2>'
+        while (i < commandLine.length && (commandLine[i] === ' ' || commandLine[i] === '\t')) {
+          i++;
+        }
+        
+        // Parse the output filename
+        let filename = "";
+        let inFileQuote = false;
+        let fileQuoteChar = null;
+        
+        while (i < commandLine.length) {
+          const c = commandLine[i];
+          
+          if ((c === '"' || c === "'") && !inFileQuote) {
+            inFileQuote = true;
+            fileQuoteChar = c;
+            i++;
+          } else if (c === fileQuoteChar && inFileQuote) {
+            inFileQuote = false;
+            fileQuoteChar = null;
+            i++;
+          } else if ((c === ' ' || c === '\t') && !inFileQuote) {
+            break;
+          } else {
+            filename += c;
+            i++;
+          }
+        }
+        
+        redirectError = filename;
       }
-      
-      redirectError = filename;
     } else if (char === '1' && !inSingleQuote && !inDoubleQuote && i + 1 < commandLine.length && commandLine[i + 1] === '>') {
       // Check if it's 1>> (append) or 1> (overwrite)
       if (i + 2 < commandLine.length && commandLine[i + 2] === '>') {
@@ -382,14 +424,6 @@ function executeCommand(commandLine) {
   
   // Execute the command with arguments
   const result = spawnSync(executablePath, args, spawnOptions);
-  
-  // Close file descriptors if they were opened
-  if (stdoutFd !== 'inherit' && typeof stdoutFd === 'number') {
-    fs.closeSync(stdoutFd);
-  }
-  if (stderrFd !== 'inherit' && typeof stderrFd === 'number') {
-    fs.closeSync(stderrFd);
-  }
   
   // If there was an error spawning the process, handle it
   if (result.error) {
