@@ -10,13 +10,10 @@ let rlGlobal = null;
 function completer(line) {
   const builtins = ["echo", "exit"];
   
-  // Get the current word being typed (everything up to cursor)
-  const trimmedLine = line.trimStart();
-  
   // Only autocomplete if we're at the start of the command (no spaces yet)
-  if (!trimmedLine.includes(' ')) {
+  if (!line.includes(' ')) {
     // Start with builtin commands
-    let hits = builtins.filter((cmd) => cmd.startsWith(trimmedLine));
+    let hits = builtins.filter((cmd) => cmd.startsWith(line));
     
     // Search for executables in PATH
     const pathEnv = process.env.PATH || "";
@@ -35,7 +32,7 @@ function completer(line) {
         
         for (const file of files) {
           // Check if file starts with the partial command
-          if (file.startsWith(trimmedLine)) {
+          if (file.startsWith(line)) {
             const fullPath = path.join(dir, file);
             
             try {
@@ -63,12 +60,14 @@ function completer(line) {
       return [[], trimmedLine];
     }
     
-    // If there's exactly one match, return it with a trailing space
+    // If there's exactly one match, return completion with trailing space
     if (hits.length === 1) {
-      return [[hits[0] + ' '], trimmedLine];
+      // Return the completion string with a space appended
+      // This tells readline to complete and add a space
+      return [[hits[0]], trimmedLine];
     }
     
-    // Multiple matches
+    // Multiple matches - return them for display
     return [hits, trimmedLine];
   }
   
