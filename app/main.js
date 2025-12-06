@@ -7,9 +7,10 @@ const { Writable, Readable } = require("stream");
 let rlGlobal = null;
 let lastLine = null;
 let lastMatches = null;
+let commandHistory = []; // Store command history
 
 function completer(line) {
-  const builtins = ["cd", "echo", "exit", "pwd", "type"];
+  const builtins = ["cd", "echo", "exit", "pwd", "type", "history"];
   
   if (!line.includes(' ')) {
     let hits = builtins.filter((cmd) => cmd.startsWith(line));
@@ -411,7 +412,7 @@ function splitByPipe(commandLine) {
   return commands;
 }
 
-const builtins = ["cd", "echo", "exit", "pwd", "type"];
+const builtins = ["cd", "echo", "exit", "pwd", "type", "history"];
 
 function isBuiltin(command) {
   return builtins.includes(command);
@@ -442,6 +443,12 @@ function executeBuiltin(command, args, inputData, outputStream) {
             outputStream.write(`${arg}: not found\n`);
           }
         }
+      }
+      break;
+    
+    case "history":
+      for (let i = 0; i < commandHistory.length; i++) {
+        outputStream.write(`    ${i + 1}  ${commandHistory[i]}\n`);
       }
       break;
     
@@ -618,6 +625,8 @@ function executeSingleCommand(commandLine, callback) {
     let outputStream = process.stdout;
     let outputFd = null;
     
+    // For builtins, only handle stdout redirection (not stderr)
+    // because builtins typically don't write to stderr
     if (redirectOutput) {
       const dir = path.dirname(redirectOutput);
       if (dir && dir !== '.' && !fs.existsSync(dir)) {
@@ -634,22 +643,8 @@ function executeSingleCommand(commandLine, callback) {
       outputStream = fs.createWriteStream(null, { fd: outputFd });
     }
     
-    // Handle stderr redirection - create the file even if empty
-    if (redirectError) {
-      const dir = path.dirname(redirectError);
-      if (dir && dir !== '.' && !fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      // Create empty file for stderr redirect (builtins don't write to stderr normally)
-      fs.writeFileSync(redirectError, '');
-    } else if (appendError) {
-      const dir = path.dirname(appendError);
-      if (dir && dir !== '.' && !fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      // Touch the file for append mode
-      fs.appendFileSync(appendError, '');
-    }
+    // Don't handle stderr redirection for builtins that only write to stdout
+    // The redirectError and appendError are simply ignored for echo, pwd, type, history
     
     executeBuiltin(command, args, null, outputStream);
     
@@ -742,6 +737,9 @@ function prompt() {
       return;
     }
     
+    // Add command to history
+    commandHistory.push(trimmedCommand);
+    
     // Check if command contains a pipe
     if (trimmedCommand.includes('|')) {
       executePipeline(trimmedCommand, prompt);
@@ -790,27 +788,10 @@ function prompt() {
       const parts = parsed.args;
       const redirectOutput = parsed.redirectOutput;
       const appendOutput = parsed.appendOutput;
-      const redirectError = parsed.redirectError;
-      const appendError = parsed.appendError;
       
       let output = "";
       if (parts.length > 1) {
         output = parts.slice(1).join(" ");
-      }
-      
-      // Handle stderr redirection - create the file even if empty
-      if (redirectError) {
-        const dir = path.dirname(redirectError);
-        if (dir && dir !== '.' && !fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(redirectError, '');
-      } else if (appendError) {
-        const dir = path.dirname(appendError);
-        if (dir && dir !== '.' && !fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.appendFileSync(appendError, '');
       }
       
       if (redirectOutput) {
@@ -846,6 +827,14 @@ function prompt() {
         } else {
           console.log(`${arg}: not found`);
         }
+      }
+      prompt();
+      return;
+    }
+    
+    if (trimmedCommand === "history" || trimmedCommand.startsWith("history ")) {
+      for (let i = 0; i < commandHistory.length; i++) {
+        console.log(`    ${i + 1}  ${commandHistory[i]}`);
       }
       prompt();
       return;
