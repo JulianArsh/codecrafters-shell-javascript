@@ -1,7 +1,7 @@
 const readline = require("readline");
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 
 let rlGlobal = null;
 let lastLine = null;
@@ -29,7 +29,6 @@ function completer(line) {
             
             try {
               fs.accessSync(fullPath, fs.constants.X_OK);
-              // Avoid duplicates with builtins
               if (!builtins.includes(file)) {
                 foundExecutables.add(file);
               }
@@ -45,8 +44,6 @@ function completer(line) {
     
     hits = hits.concat(Array.from(foundExecutables));
     hits.sort();
-    
-    // Remove duplicates
     hits = [...new Set(hits)];
     
     if (hits.length === 0) {
@@ -63,7 +60,6 @@ function completer(line) {
     if (hits.length === 1) {
       lastLine = null;
       lastMatches = null;
-      // Return the match with a trailing space
       return [[hits[0] + ' '], line];
     }
     
@@ -384,6 +380,111 @@ function parseCommandLine(commandLine) {
   return { args, redirectOutput, redirectError, appendOutput, appendError };
 }
 
+// Split command line by pipe, respecting quotes
+function splitByPipe(commandLine) {
+  const commands = [];
+  let currentCmd = "";
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  
+  for (let i = 0; i < commandLine.length; i++) {
+    const char = commandLine[i];
+    
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      currentCmd += char;
+    } else if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      currentCmd += char;
+    } else if (char === '|' && !inSingleQuote && !inDoubleQuote) {
+      commands.push(currentCmd.trim());
+      currentCmd = "";
+    } else {
+      currentCmd += char;
+    }
+  }
+  
+  if (currentCmd.trim().length > 0) {
+    commands.push(currentCmd.trim());
+  }
+  
+  return commands;
+}
+
+function executePipeline(commandLine) {
+  const commands = splitByPipe(commandLine);
+  
+  if (commands.length === 0) {
+    return;
+  }
+  
+  // If only one command, execute normally
+  if (commands.length === 1) {
+    executeCommand(commands[0]);
+    return;
+  }
+  
+  // Execute pipeline
+  const processes = [];
+  
+  for (let i = 0; i < commands.length; i++) {
+    const parsed = parseCommandLine(commands[i]);
+    const parts = parsed.args;
+    
+    if (parts.length === 0) continue;
+    
+    const command = parts[0];
+    const args = parts.slice(1);
+    
+    const executablePath = findExecutableInPath(command);
+    
+    if (!executablePath) {
+      console.log(`${command}: command not found`);
+      return;
+    }
+    
+    const spawnOptions = {
+      stdio: ['pipe', 'pipe', 'inherit']
+    };
+    
+    const proc = spawn(executablePath, args, spawnOptions);
+    
+    // Connect pipes
+    if (i > 0) {
+      // Connect previous process stdout to current process stdin
+      processes[i - 1].stdout.pipe(proc.stdin);
+    }
+    
+    processes.push(proc);
+  }
+  
+  // Connect first process stdin to our stdin if needed
+  if (processes.length > 0) {
+    // For the first process, use inherited stdin
+    // processes[0].stdin is already set up as 'pipe' but we don't write to it
+    
+    // For the last process, pipe stdout to our stdout
+    if (processes.length > 0) {
+      processes[processes.length - 1].stdout.pipe(process.stdout);
+    }
+    
+    // Wait for all processes to complete
+    let completed = 0;
+    processes.forEach((proc, index) => {
+      proc.on('close', () => {
+        completed++;
+        if (completed === processes.length) {
+          prompt();
+        }
+      });
+      
+      proc.on('error', (err) => {
+        console.error(`Error in process ${index}:`, err);
+      });
+    });
+  }
+}
+
 function executeCommand(commandLine) {
   const parsed = parseCommandLine(commandLine.trim());
   const parts = parsed.args;
@@ -408,10 +509,11 @@ function executeCommand(commandLine) {
   
   const spawnOptions = {
     argv0: command,
+    stdio: ['inherit', 'inherit', 'inherit']
   };
   
-  let stdoutFd = 'inherit';
-  let stderrFd = 'inherit';
+  let stdoutFd = null;
+  let stderrFd = null;
   
   try {
     if (redirectOutput) {
@@ -420,12 +522,14 @@ function executeCommand(commandLine) {
         fs.mkdirSync(dir, { recursive: true });
       }
       stdoutFd = fs.openSync(redirectOutput, 'w');
+      spawnOptions.stdio[1] = stdoutFd;
     } else if (appendOutput) {
       const dir = path.dirname(appendOutput);
       if (dir && dir !== '.' && !fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
       stdoutFd = fs.openSync(appendOutput, 'a');
+      spawnOptions.stdio[1] = stdoutFd;
     }
     
     if (redirectError) {
@@ -434,27 +538,41 @@ function executeCommand(commandLine) {
         fs.mkdirSync(dir, { recursive: true });
       }
       stderrFd = fs.openSync(redirectError, 'w');
+      spawnOptions.stdio[2] = stderrFd;
     } else if (appendError) {
       const dir = path.dirname(appendError);
       if (dir && dir !== '.' && !fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
       stderrFd = fs.openSync(appendError, 'a');
+      spawnOptions.stdio[2] = stderrFd;
     }
     
-    spawnOptions.stdio = ['inherit', stdoutFd, stderrFd];
+    const proc = spawn(executablePath, args, spawnOptions);
     
-    const result = spawnSync(executablePath, args, spawnOptions);
+    proc.on('close', () => {
+      if (stdoutFd !== null) {
+        fs.closeSync(stdoutFd);
+      }
+      if (stderrFd !== null) {
+        fs.closeSync(stderrFd);
+      }
+    });
     
-    if (result.error) {
+    proc.on('error', (err) => {
       console.log(`${command}: command not found`);
-    }
-  } finally {
-    // Close file descriptors to prevent leaks
-    if (typeof stdoutFd === 'number') {
+      if (stdoutFd !== null) {
+        fs.closeSync(stdoutFd);
+      }
+      if (stderrFd !== null) {
+        fs.closeSync(stderrFd);
+      }
+    });
+  } catch (err) {
+    if (stdoutFd !== null) {
       fs.closeSync(stdoutFd);
     }
-    if (typeof stderrFd === 'number') {
+    if (stderrFd !== null) {
       fs.closeSync(stderrFd);
     }
   }
@@ -464,28 +582,24 @@ function prompt() {
   rl.question("$ ", (command) => {
     const trimmedCommand = command.trim();
     
-    // Handle exit with optional code
     if (trimmedCommand === "exit" || trimmedCommand.startsWith("exit ")) {
       const parts = trimmedCommand.split(/\s+/);
       const exitCode = parts.length > 1 ? parseInt(parts[1], 10) || 0 : 0;
       process.exit(exitCode);
     }
     
-    // Handle pwd builtin
     if (trimmedCommand === "pwd") {
       console.log(process.cwd());
       prompt();
       return;
     }
     
-    // Handle cd builtin
     if (trimmedCommand === "cd" || trimmedCommand.startsWith("cd ")) {
       const parsed = parseCommandLine(trimmedCommand);
       const parts = parsed.args;
       
       let targetDir;
       if (parts.length === 1) {
-        // cd with no args goes to HOME
         targetDir = process.env.HOME || '/';
       } else if (parts[1] === '~') {
         targetDir = process.env.HOME || '/';
@@ -504,7 +618,6 @@ function prompt() {
       return;
     }
     
-    // Handle echo builtin
     if (trimmedCommand.startsWith("echo ") || trimmedCommand === "echo") {
       const parsed = parseCommandLine(trimmedCommand);
       const parts = parsed.args;
@@ -544,7 +657,6 @@ function prompt() {
       return;
     }
     
-    // Handle type builtin
     if (trimmedCommand.startsWith("type ")) {
       const arg = trimmedCommand.slice(5).trim();
       const builtins = ["cd", "echo", "exit", "pwd", "type"];
@@ -564,12 +676,20 @@ function prompt() {
       return;
     }
     
-    // Try to execute as external command
+    // Check if command contains a pipe
+    if (trimmedCommand.includes('|')) {
+      executePipeline(trimmedCommand);
+      return;
+    }
+    
+    // Execute single command
     executeCommand(trimmedCommand);
     
-    prompt();
+    // Need to wait for command to complete before prompting again
+    setTimeout(() => {
+      prompt();
+    }, 100);
   });
 }
 
-// Start the REPL
 prompt();
