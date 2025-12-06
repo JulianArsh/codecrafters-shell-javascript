@@ -391,6 +391,11 @@ function executeCommand(commandLine) {
 
 function prompt() {
   rl.question("$ ", (command) => {
+    // Debug log
+    try {
+      fs.appendFileSync('/tmp/shell-debug.log', `RAW COMMAND: "${command}"\n`);
+    } catch (e) {}
+    
     // Trim the command to remove extra whitespace
     const trimmedCommand = command.trim();
     
