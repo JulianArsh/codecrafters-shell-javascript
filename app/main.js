@@ -137,6 +137,11 @@ function findExecutableInPath(command) {
   return null;
 }
 
+function isBuiltin(command) {
+  const builtins = ["cd", "echo", "exit", "pwd", "type"];
+  return builtins.includes(command);
+}
+
 function parseCommandLine(commandLine) {
   const args = [];
   let currentArg = "";
@@ -380,7 +385,6 @@ function parseCommandLine(commandLine) {
   return { args, redirectOutput, redirectError, appendOutput, appendError };
 }
 
-// Split command line by pipe, respecting quotes
 function splitByPipe(commandLine) {
   const commands = [];
   let currentCmd = "";
@@ -411,6 +415,38 @@ function splitByPipe(commandLine) {
   return commands;
 }
 
+// Execute builtin and return output as string
+function executeBuiltinToString(command, args, inputData) {
+  const builtins = ["cd", "echo", "exit", "pwd", "type"];
+  
+  if (command === "echo") {
+    let output = "";
+    if (args.length > 0) {
+      output = args.join(" ");
+    }
+    return output + '\n';
+  } else if (command === "type") {
+    if (args.length > 0) {
+      const arg = args[0];
+      if (builtins.includes(arg)) {
+        return `${arg} is a shell builtin\n`;
+      } else {
+        const executablePath = findExecutableInPath(arg);
+        if (executablePath) {
+          return `${arg} is ${executablePath}\n`;
+        } else {
+          return `${arg}: not found\n`;
+        }
+      }
+    }
+    return "";
+  } else if (command === "pwd") {
+    return process.cwd() + '\n';
+  }
+  
+  return "";
+}
+
 function executePipeline(commandLine) {
   const commands = splitByPipe(commandLine);
   
@@ -418,70 +454,107 @@ function executePipeline(commandLine) {
     return;
   }
   
-  // If only one command, execute normally
   if (commands.length === 1) {
     executeCommand(commands[0]);
     return;
   }
   
-  // Execute pipeline
+  // Parse all commands to check if they are builtins
+  const parsedCommands = commands.map(cmd => {
+    const parsed = parseCommandLine(cmd);
+    return {
+      command: parsed.args[0] || "",
+      args: parsed.args.slice(1),
+      isBuiltin: isBuiltin(parsed.args[0] || "")
+    };
+  });
+  
+  // Handle pipeline execution
+  let currentInput = null;
   const processes = [];
   
-  for (let i = 0; i < commands.length; i++) {
-    const parsed = parseCommandLine(commands[i]);
-    const parts = parsed.args;
+  for (let i = 0; i < parsedCommands.length; i++) {
+    const { command, args, isBuiltin: isBuiltinCmd } = parsedCommands[i];
     
-    if (parts.length === 0) continue;
+    if (!command) continue;
     
-    const command = parts[0];
-    const args = parts.slice(1);
-    
-    const executablePath = findExecutableInPath(command);
-    
-    if (!executablePath) {
-      console.log(`${command}: command not found`);
-      return;
-    }
-    
-    const spawnOptions = {
-      stdio: ['pipe', 'pipe', 'inherit']
-    };
-    
-    const proc = spawn(executablePath, args, spawnOptions);
-    
-    // Connect pipes
-    if (i > 0) {
-      // Connect previous process stdout to current process stdin
-      processes[i - 1].stdout.pipe(proc.stdin);
-    }
-    
-    processes.push(proc);
-  }
-  
-  // Connect first process stdin to our stdin if needed
-  if (processes.length > 0) {
-    // For the first process, use inherited stdin
-    // processes[0].stdin is already set up as 'pipe' but we don't write to it
-    
-    // For the last process, pipe stdout to our stdout
-    if (processes.length > 0) {
-      processes[processes.length - 1].stdout.pipe(process.stdout);
-    }
-    
-    // Wait for all processes to complete
-    let completed = 0;
-    processes.forEach((proc, index) => {
-      proc.on('close', () => {
-        completed++;
-        if (completed === processes.length) {
-          prompt();
-        }
-      });
+    if (isBuiltinCmd) {
+      // Execute builtin with current input
+      const output = executeBuiltinToString(command, args, currentInput);
       
-      proc.on('error', (err) => {
-        console.error(`Error in process ${index}:`, err);
-      });
-    });
+      if (i === parsedCommands.length - 1) {
+        // Last command - output to stdout
+        process.stdout.write(output);
+        prompt();
+        return;
+      } else {
+        // Not last command - pass output to next command
+        currentInput = output;
+      }
+    } else {
+      // External command
+      const executablePath = findExecutableInPath(command);
+      
+      if (!executablePath) {
+        console.log(`${command}: command not found`);
+        prompt();
+        return;
+      }
+      
+      const spawnOptions = {
+        stdio: ['pipe', 'pipe', 'inherit']
+      };
+      
+      const proc = spawn(executablePath, args, spawnOptions);
+      
+      // If there's input from previous command, write it
+      if (currentInput !== null) {
+        proc.stdin.write(currentInput);
+        proc.stdin.end();
+      }
+      
+      if (i === parsedCommands.length - 1) {
+        // Last command - pipe to stdout
+        proc.stdout.pipe(process.stdout);
+        
+        proc.on('close', () => {
+          prompt();
+        });
+      } else {
+        // Not last command - collect output
+        let output = '';
+        proc.stdout.on('data', (data) => {
+          output += data.toString();
+        });
+        
+        proc.on('close', () => {
+          currentInput = output;
+          
+          // Continue with next command
+          const nextIndex = i + 1;
+          if (nextIndex < parsedCommands.length) {
+            const nextCmd = parsedCommands[nextIndex];
+            
+            if (nextCmd.isBuiltin) {
+              const builtinOutput = executeBuiltinToString(nextCmd.command, nextCmd.args, currentInput);
+              
+              if (nextIndex === parsedCommands.length - 1) {
+                process.stdout.write(builtinOutput);
+                prompt();
+              }
+            }
+          }
+        });
+      }
+      
+      processes.push(proc);
+      
+      // If this is not the last command and it's an external command,
+      // we need to wait for it to complete before continuing
+      if (i < parsedCommands.length - 1) {
+        return; // The close handler will continue execution
+      }
+    }
   }
 }
 
@@ -676,16 +749,13 @@ function prompt() {
       return;
     }
     
-    // Check if command contains a pipe
     if (trimmedCommand.includes('|')) {
       executePipeline(trimmedCommand);
       return;
     }
     
-    // Execute single command
     executeCommand(trimmedCommand);
     
-    // Need to wait for command to complete before prompting again
     setTimeout(() => {
       prompt();
     }, 100);
