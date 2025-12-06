@@ -59,18 +59,7 @@ function completer(line) {
     
     // If there's exactly one match, add a space after it
     if (hits.length === 1) {
-      // Schedule adding space after completion
-      if (rlGlobal) {
-        // Use setImmediate to add space after completion is applied
-        setImmediate(() => {
-          if (rlGlobal && rlGlobal.line === hits[0]) {
-            rlGlobal.line = hits[0] + ' ';
-            rlGlobal.cursor = rlGlobal.line.length;
-            rlGlobal._refreshLine();
-          }
-        });
-      }
-      return [[hits[0]], trimmedLine];
+      return [[hits[0] + ' '], trimmedLine];
     }
     
     // If there are no matches, ring the bell
@@ -449,13 +438,6 @@ function executeCommand(commandLine) {
   const appendOutput = parsed.appendOutput;
   const appendError = parsed.appendError;
   
-  // Debug logging (write to a file instead of stderr to avoid interfering with tests)
-  try {
-    fs.appendFileSync('/tmp/shell-debug.log', `Command: ${commandLine}\nParsed: ${JSON.stringify(parsed)}\n\n`);
-  } catch (e) {
-    // Ignore errors
-  }
-  
   if (parts.length === 0) {
     return;
   }
@@ -522,11 +504,6 @@ function executeCommand(commandLine) {
 
 function prompt() {
   rl.question("$ ", (command) => {
-    // Debug log
-    try {
-      fs.appendFileSync('/tmp/shell-debug.log', `RAW COMMAND: "${command}"\n`);
-    } catch (e) {}
-    
     // Trim the command to remove extra whitespace
     const trimmedCommand = command.trim();
     
@@ -594,18 +571,6 @@ function prompt() {
         } else {
           console.log(`${arg}: not found`);
         }
-      }
-      prompt();
-      return;
-    }
-    
-    // Debug command to view log
-    if (trimmedCommand === "debug") {
-      try {
-        const log = fs.readFileSync('/tmp/shell-debug.log', 'utf8');
-        console.log(log);
-      } catch (e) {
-        console.log("No debug log found");
       }
       prompt();
       return;
