@@ -10,7 +10,10 @@ let lastMatches = null;
 let commandHistory = [];
 let lastAppendedIndex = 0;
 
-// Load history from HISTFILE on startup
+// ------------------------------------------------------------
+// History
+// ------------------------------------------------------------
+
 function loadHistoryFromFile() {
   const histfile = process.env.HISTFILE;
 
@@ -35,12 +38,11 @@ function loadHistoryFromFile() {
         lastAppendedIndex = commandHistory.length;
       }
     } catch (err) {
-      // Silently fail if we can't read the history file
+      // Silently fail if history cannot be read.
     }
   }
 }
 
-// Save history to HISTFILE on exit
 function saveHistoryToFile() {
   const histfile = process.env.HISTFILE;
 
@@ -53,7 +55,9 @@ function saveHistoryToFile() {
         dir !== "." &&
         !fs.existsSync(dir)
       ) {
-        fs.mkdirSync(dir, { recursive: true });
+        fs.mkdirSync(dir, {
+          recursive: true,
+        });
       }
 
       const historyContent =
@@ -65,8 +69,20 @@ function saveHistoryToFile() {
         "utf-8"
       );
     } catch (err) {
-      // Silently fail if we can't write the history file
+      // Silently fail if history cannot be written.
     }
+  }
+}
+
+// ------------------------------------------------------------
+// Completion
+// ------------------------------------------------------------
+
+function ringBell() {
+  if (rlGlobal && rlGlobal.output) {
+    rlGlobal.output.write("\x07");
+  } else {
+    process.stdout.write("\x07");
   }
 }
 
@@ -80,9 +96,9 @@ function completer(line) {
     "history",
   ];
 
-  // ------------------------------------------------------------
+  // ----------------------------------------------------------
   // Command completion
-  // ------------------------------------------------------------
+  // ----------------------------------------------------------
 
   if (!line.includes(" ")) {
     let hits = builtins.filter((cmd) =>
@@ -102,21 +118,23 @@ function completer(line) {
         const files = fs.readdirSync(dir);
 
         for (const file of files) {
-          if (file.startsWith(line)) {
-            const fullPath = path.join(dir, file);
+          if (!file.startsWith(line)) {
+            continue;
+          }
 
-            try {
-              fs.accessSync(
-                fullPath,
-                fs.constants.X_OK
-              );
+          const fullPath = path.join(dir, file);
 
-              if (!builtins.includes(file)) {
-                foundExecutables.add(file);
-              }
-            } catch (err) {
-              continue;
+          try {
+            fs.accessSync(
+              fullPath,
+              fs.constants.X_OK
+            );
+
+            if (!builtins.includes(file)) {
+              foundExecutables.add(file);
             }
+          } catch (err) {
+            continue;
           }
         }
       } catch (err) {
@@ -131,18 +149,23 @@ function completer(line) {
     hits.sort();
     hits = [...new Set(hits)];
 
+    // --------------------------------------------------------
+    // No command matches
+    // --------------------------------------------------------
+
     if (hits.length === 0) {
-      if (rlGlobal && rlGlobal.output) {
-        rlGlobal.output.write("\x07");
-      } else {
-        process.stdout.write("\x07");
-      }
+      ringBell();
 
       lastLine = null;
       lastMatches = null;
 
+      // Returning the original line keeps input unchanged.
       return [[], line];
     }
+
+    // --------------------------------------------------------
+    // Exactly one command match
+    // --------------------------------------------------------
 
     if (hits.length === 1) {
       lastLine = null;
@@ -150,6 +173,10 @@ function completer(line) {
 
       return [[hits[0] + " "], line];
     }
+
+    // --------------------------------------------------------
+    // Multiple command matches
+    // --------------------------------------------------------
 
     let commonPrefix = hits[0];
 
@@ -168,6 +195,7 @@ function completer(line) {
         commonPrefix.substring(0, j);
     }
 
+    // If there is a longer common prefix, complete it.
     if (commonPrefix.length > line.length) {
       lastLine = null;
       lastMatches = null;
@@ -175,6 +203,7 @@ function completer(line) {
       return [[commonPrefix], line];
     }
 
+    // Pressing TAB again displays matches.
     if (
       lastLine === line &&
       lastMatches &&
@@ -194,11 +223,7 @@ function completer(line) {
       return [[], line];
     }
 
-    if (rlGlobal && rlGlobal.output) {
-      rlGlobal.output.write("\x07");
-    } else {
-      process.stdout.write("\x07");
-    }
+    ringBell();
 
     lastLine = line;
     lastMatches = hits;
@@ -206,25 +231,18 @@ function completer(line) {
     return [[], line];
   }
 
-  // ------------------------------------------------------------
-  // Filename / Directory completion
-  // ------------------------------------------------------------
+  // ----------------------------------------------------------
+  // Filename / directory completion
+  // ----------------------------------------------------------
 
   const lastSpaceIndex = line.lastIndexOf(" ");
 
-  // Everything after the last space is the filename/path
-  // currently being completed.
-  const partialPath = line.substring(
-    lastSpaceIndex + 1
-  );
+  // Everything after the final space is the path being
+  // completed.
+  const partialPath =
+    line.substring(lastSpaceIndex + 1);
 
   // Find the final slash.
-  //
-  // Example:
-  // path/to/f
-  //
-  // directoryPath = path/to/
-  // prefix        = f
   const lastSlashIndex =
     partialPath.lastIndexOf("/");
 
@@ -238,24 +256,17 @@ function completer(line) {
         lastSlashIndex + 1
       );
 
-    prefix = partialPath.substring(
-      lastSlashIndex + 1
-    );
+    prefix =
+      partialPath.substring(
+        lastSlashIndex + 1
+      );
   } else {
     directoryPath = "";
     prefix = partialPath;
   }
 
   try {
-    // The directory path is relative to the shell's
-    // current working directory.
-    //
-    // Example:
-    // cwd = /home/user
-    // directoryPath = path/to/
-    //
-    // searchDirectory =
-    // /home/user/path/to/
+    // Resolve the directory relative to the shell's cwd.
     const searchDirectory = directoryPath
       ? path.resolve(
           process.cwd(),
@@ -263,21 +274,34 @@ function completer(line) {
         )
       : process.cwd();
 
-    const files = fs.readdirSync(
-      searchDirectory
-    );
+    const files =
+      fs.readdirSync(searchDirectory);
 
     // Find entries beginning with the typed prefix.
     const matches = files.filter((file) =>
       file.startsWith(prefix)
     );
 
-    // This stage only requires exactly one match.
+    // --------------------------------------------------------
+    // No matches
+    // --------------------------------------------------------
+
+    if (matches.length === 0) {
+      ringBell();
+
+      lastLine = null;
+      lastMatches = null;
+
+      // Keep the user's original input unchanged.
+      return [[], line];
+    }
+
+    // --------------------------------------------------------
+    // Exactly one match
+    // --------------------------------------------------------
+
     if (matches.length === 1) {
       const match = matches[0];
-
-      const completedPath =
-        directoryPath + match;
 
       const fullPath = path.join(
         searchDirectory,
@@ -293,29 +317,83 @@ function completer(line) {
         isDirectory = false;
       }
 
+      const completedPath =
+        directoryPath + match;
+
       lastLine = null;
       lastMatches = null;
 
-      // Directories:
-      //   append "/" with NO trailing space.
+      // Directory:
+      //   pig<TAB> -> pig/
       //
-      // Files:
-      //   append a trailing space.
+      // File:
+      //   file<TAB> -> file + " "
       if (isDirectory) {
         return [[completedPath + "/"], partialPath];
       }
 
       return [[completedPath + " "], partialPath];
     }
+
+    // --------------------------------------------------------
+    // Multiple matches
+    //
+    // This stage only requires one match, but preserve the
+    // existing common-prefix behavior.
+    // --------------------------------------------------------
+
+    let commonPrefix = matches[0];
+
+    for (let i = 1; i < matches.length; i++) {
+      let j = 0;
+
+      while (
+        j < commonPrefix.length &&
+        j < matches[i].length &&
+        commonPrefix[j] === matches[i][j]
+      ) {
+        j++;
+      }
+
+      commonPrefix =
+        commonPrefix.substring(0, j);
+    }
+
+    if (commonPrefix.length > prefix.length) {
+      const completedPath =
+        directoryPath + commonPrefix;
+
+      lastLine = null;
+      lastMatches = null;
+
+      return [[completedPath], partialPath];
+    }
+
+    // No useful completion is possible.
+    ringBell();
+
+    lastLine = line;
+    lastMatches = matches;
+
+    return [[], line];
   } catch (err) {
     // Directory doesn't exist or cannot be read.
+    //
+    // The important behavior for this stage is:
+    //   1. Don't change the input.
+    //   2. Print the bell.
+    ringBell();
+
+    lastLine = null;
+    lastMatches = null;
+
+    return [[], line];
   }
-
-  lastLine = null;
-  lastMatches = null;
-
-  return [[], line];
 }
+
+// ------------------------------------------------------------
+// Readline
+// ------------------------------------------------------------
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -326,12 +404,20 @@ const rl = readline.createInterface({
 
 rlGlobal = rl;
 
+// ------------------------------------------------------------
+// PATH lookup
+// ------------------------------------------------------------
+
 function findExecutableInPath(command) {
   const pathEnv = process.env.PATH || "";
-  const directories = pathEnv.split(path.delimiter);
+  const directories =
+    pathEnv.split(path.delimiter);
 
   for (const dir of directories) {
-    const fullPath = path.join(dir, command);
+    const fullPath = path.join(
+      dir,
+      command
+    );
 
     try {
       if (fs.existsSync(fullPath)) {
@@ -353,6 +439,10 @@ function findExecutableInPath(command) {
 
   return null;
 }
+
+// ------------------------------------------------------------
+// Command parser
+// ------------------------------------------------------------
 
 function parseCommandLine(commandLine) {
   const args = [];
@@ -435,8 +525,10 @@ function parseCommandLine(commandLine) {
 
         while (
           i < commandLine.length &&
-          (commandLine[i] === " " ||
-            commandLine[i] === "\t")
+          (
+            commandLine[i] === " " ||
+            commandLine[i] === "\t"
+          )
         ) {
           i++;
         }
@@ -484,8 +576,10 @@ function parseCommandLine(commandLine) {
 
         while (
           i < commandLine.length &&
-          (commandLine[i] === " " ||
-            commandLine[i] === "\t")
+          (
+            commandLine[i] === " " ||
+            commandLine[i] === "\t"
+          )
         ) {
           i++;
         }
@@ -544,8 +638,10 @@ function parseCommandLine(commandLine) {
 
         while (
           i < commandLine.length &&
-          (commandLine[i] === " " ||
-            commandLine[i] === "\t")
+          (
+            commandLine[i] === " " ||
+            commandLine[i] === "\t"
+          )
         ) {
           i++;
         }
@@ -593,8 +689,10 @@ function parseCommandLine(commandLine) {
 
         while (
           i < commandLine.length &&
-          (commandLine[i] === " " ||
-            commandLine[i] === "\t")
+          (
+            commandLine[i] === " " ||
+            commandLine[i] === "\t"
+          )
         ) {
           i++;
         }
@@ -653,8 +751,10 @@ function parseCommandLine(commandLine) {
 
         while (
           i < commandLine.length &&
-          (commandLine[i] === " " ||
-            commandLine[i] === "\t")
+          (
+            commandLine[i] === " " ||
+            commandLine[i] === "\t"
+          )
         ) {
           i++;
         }
@@ -702,8 +802,10 @@ function parseCommandLine(commandLine) {
 
         while (
           i < commandLine.length &&
-          (commandLine[i] === " " ||
-            commandLine[i] === "\t")
+          (
+            commandLine[i] === " " ||
+            commandLine[i] === "\t"
+          )
         ) {
           i++;
         }
@@ -772,6 +874,10 @@ function parseCommandLine(commandLine) {
   };
 }
 
+// ------------------------------------------------------------
+// Pipeline
+// ------------------------------------------------------------
+
 function splitByPipe(commandLine) {
   const commands = [];
 
@@ -817,6 +923,10 @@ function splitByPipe(commandLine) {
   return commands;
 }
 
+// ------------------------------------------------------------
+// Builtins
+// ------------------------------------------------------------
+
 const builtins = [
   "cd",
   "echo",
@@ -839,7 +949,9 @@ function executeBuiltin(
   switch (command) {
     case "echo": {
       const output = args.join(" ");
-      outputStream.write(output + "\n");
+      outputStream.write(
+        output + "\n"
+      );
       break;
     }
 
@@ -1020,7 +1132,10 @@ function executeBuiltin(
             10
           );
 
-          if (!isNaN(n) && n > 0) {
+          if (
+            !isNaN(n) &&
+            n > 0
+          ) {
             limit = n;
           }
         }
@@ -1052,7 +1167,9 @@ function executeBuiltin(
       if (args.length === 0) {
         targetDir =
           process.env.HOME || "/";
-      } else if (args[0] === "~") {
+      } else if (
+        args[0] === "~"
+      ) {
         targetDir =
           process.env.HOME || "/";
       } else if (
@@ -1091,13 +1208,16 @@ function executeBuiltin(
   }
 }
 
+// ------------------------------------------------------------
+// Pipeline execution
+// ------------------------------------------------------------
+
 function executePipeline(
   commandLine,
   callback
 ) {
-  const commands = splitByPipe(
-    commandLine
-  );
+  const commands =
+    splitByPipe(commandLine);
 
   if (commands.length === 0) {
     callback();
@@ -1112,20 +1232,18 @@ function executePipeline(
     return;
   }
 
-  const parsedCommands = commands.map(
-    (cmd) => {
+  const parsedCommands =
+    commands.map((cmd) => {
       const parsed =
         parseCommandLine(cmd);
 
       return {
         command: parsed.args[0],
         args: parsed.args.slice(1),
-        isBuiltin: isBuiltin(
-          parsed.args[0]
-        ),
+        isBuiltin:
+          isBuiltin(parsed.args[0]),
       };
-    }
-  );
+    });
 
   let currentInput = null;
   const processes = [];
@@ -1196,12 +1314,13 @@ function executePipeline(
         const outputData =
           Buffer.concat(chunks);
 
-        currentInput = new Readable({
-          read() {
-            this.push(outputData);
-            this.push(null);
-          },
-        });
+        currentInput =
+          new Readable({
+            read() {
+              this.push(outputData);
+              this.push(null);
+            },
+          });
       }
     } else {
       const executablePath =
@@ -1244,8 +1363,7 @@ function executePipeline(
       }
 
       if (!isLast) {
-        currentInput =
-          proc.stdout;
+        currentInput = proc.stdout;
       }
 
       processes.push(proc);
@@ -1278,6 +1396,10 @@ function executePipeline(
   }
 }
 
+// ------------------------------------------------------------
+// Single command execution
+// ------------------------------------------------------------
+
 function executeSingleCommand(
   commandLine,
   callback
@@ -1309,14 +1431,19 @@ function executeSingleCommand(
   const command = parts[0];
   const args = parts.slice(1);
 
+  // ----------------------------------------------------------
+  // Builtin
+  // ----------------------------------------------------------
+
   if (isBuiltin(command)) {
     let outputStream = process.stdout;
     let outputFd = null;
 
     if (redirectOutput) {
-      const dir = path.dirname(
-        redirectOutput
-      );
+      const dir =
+        path.dirname(
+          redirectOutput
+        );
 
       if (
         dir &&
@@ -1341,9 +1468,10 @@ function executeSingleCommand(
           }
         );
     } else if (appendOutput) {
-      const dir = path.dirname(
-        appendOutput
-      );
+      const dir =
+        path.dirname(
+          appendOutput
+        );
 
       if (
         dir &&
@@ -1370,9 +1498,10 @@ function executeSingleCommand(
     }
 
     if (redirectError) {
-      const dir = path.dirname(
-        redirectError
-      );
+      const dir =
+        path.dirname(
+          redirectError
+        );
 
       if (
         dir &&
@@ -1389,9 +1518,10 @@ function executeSingleCommand(
         ""
       );
     } else if (appendError) {
-      const dir = path.dirname(
-        appendError
-      );
+      const dir =
+        path.dirname(
+          appendError
+        );
 
       if (
         dir &&
@@ -1424,6 +1554,10 @@ function executeSingleCommand(
     return;
   }
 
+  // ----------------------------------------------------------
+  // External command
+  // ----------------------------------------------------------
+
   const executablePath =
     findExecutableInPath(command);
 
@@ -1449,9 +1583,10 @@ function executeSingleCommand(
   let stderrFd = null;
 
   if (redirectOutput) {
-    const dir = path.dirname(
-      redirectOutput
-    );
+    const dir =
+      path.dirname(
+        redirectOutput
+      );
 
     if (
       dir &&
@@ -1471,9 +1606,10 @@ function executeSingleCommand(
     spawnOptions.stdio[1] =
       stdoutFd;
   } else if (appendOutput) {
-    const dir = path.dirname(
-      appendOutput
-    );
+    const dir =
+      path.dirname(
+        appendOutput
+      );
 
     if (
       dir &&
@@ -1495,9 +1631,10 @@ function executeSingleCommand(
   }
 
   if (redirectError) {
-    const dir = path.dirname(
-      redirectError
-    );
+    const dir =
+      path.dirname(
+        redirectError
+      );
 
     if (
       dir &&
@@ -1517,9 +1654,10 @@ function executeSingleCommand(
     spawnOptions.stdio[2] =
       stderrFd;
   } else if (appendError) {
-    const dir = path.dirname(
-      appendError
-    );
+    const dir =
+      path.dirname(
+        appendError
+      );
 
     if (
       dir &&
@@ -1575,12 +1713,18 @@ function executeSingleCommand(
   });
 }
 
+// ------------------------------------------------------------
+// Prompt
+// ------------------------------------------------------------
+
 function prompt() {
   rl.question("$ ", (command) => {
     const trimmedCommand =
       command.trim();
 
-    if (trimmedCommand.length === 0) {
+    if (
+      trimmedCommand.length === 0
+    ) {
       prompt();
       return;
     }
@@ -1588,6 +1732,10 @@ function prompt() {
     commandHistory.push(
       trimmedCommand
     );
+
+    // --------------------------------------------------------
+    // Pipeline
+    // --------------------------------------------------------
 
     if (
       trimmedCommand.includes("|")
@@ -1600,6 +1748,10 @@ function prompt() {
       return;
     }
 
+    // --------------------------------------------------------
+    // exit
+    // --------------------------------------------------------
+
     if (
       trimmedCommand === "exit" ||
       trimmedCommand.startsWith("exit ")
@@ -1607,21 +1759,39 @@ function prompt() {
       saveHistoryToFile();
 
       const parts =
-        trimmedCommand.split(/\s+/);
+        trimmedCommand.split(
+          /\s+/
+        );
 
       const exitCode =
         parts.length > 1
-          ? parseInt(parts[1], 10) || 0
+          ? parseInt(
+              parts[1],
+              10
+            ) || 0
           : 0;
 
       process.exit(exitCode);
     }
 
-    if (trimmedCommand === "pwd") {
-      console.log(process.cwd());
+    // --------------------------------------------------------
+    // pwd
+    // --------------------------------------------------------
+
+    if (
+      trimmedCommand === "pwd"
+    ) {
+      console.log(
+        process.cwd()
+      );
+
       prompt();
       return;
     }
+
+    // --------------------------------------------------------
+    // history
+    // --------------------------------------------------------
 
     if (
       trimmedCommand === "history" ||
@@ -1657,7 +1827,9 @@ function prompt() {
                 );
 
               const lines =
-                historyContent.split("\n");
+                historyContent.split(
+                  "\n"
+                );
 
               for (const line of lines) {
                 const trimmedLine =
@@ -1706,8 +1878,9 @@ function prompt() {
             }
 
             const historyContent =
-              commandHistory.join("\n") +
-              "\n";
+              commandHistory.join(
+                "\n"
+              ) + "\n";
 
             fs.writeFileSync(
               historyFilePath,
@@ -1756,8 +1929,9 @@ function prompt() {
               newCommands.length > 0
             ) {
               const contentToAppend =
-                newCommands.join("\n") +
-                "\n";
+                newCommands.join(
+                  "\n"
+                ) + "\n";
 
               fs.appendFileSync(
                 historyFilePath,
@@ -1779,12 +1953,16 @@ function prompt() {
           commandHistory.length;
 
         if (parts.length > 1) {
-          const n = parseInt(
-            parts[1],
-            10
-          );
+          const n =
+            parseInt(
+              parts[1],
+              10
+            );
 
-          if (!isNaN(n) && n > 0) {
+          if (
+            !isNaN(n) &&
+            n > 0
+          ) {
             limit = n;
           }
         }
@@ -1798,7 +1976,8 @@ function prompt() {
 
         for (
           let i = startIndex;
-          i < commandHistory.length;
+          i <
+          commandHistory.length;
           i++
         ) {
           console.log(
@@ -1810,6 +1989,10 @@ function prompt() {
       prompt();
       return;
     }
+
+    // --------------------------------------------------------
+    // cd
+    // --------------------------------------------------------
 
     if (
       trimmedCommand === "cd" ||
@@ -1844,7 +2027,9 @@ function prompt() {
       }
 
       try {
-        process.chdir(targetDir);
+        process.chdir(
+          targetDir
+        );
       } catch (err) {
         console.log(
           `cd: ${targetDir}: No such file or directory`
@@ -1854,6 +2039,10 @@ function prompt() {
       prompt();
       return;
     }
+
+    // --------------------------------------------------------
+    // echo
+    // --------------------------------------------------------
 
     if (
       trimmedCommand.startsWith(
@@ -1889,9 +2078,10 @@ function prompt() {
       }
 
       if (redirectError) {
-        const dir = path.dirname(
-          redirectError
-        );
+        const dir =
+          path.dirname(
+            redirectError
+          );
 
         if (
           dir &&
@@ -1907,10 +2097,13 @@ function prompt() {
           redirectError,
           ""
         );
-      } else if (appendError) {
-        const dir = path.dirname(
-          appendError
-        );
+      } else if (
+        appendError
+      ) {
+        const dir =
+          path.dirname(
+            appendError
+          );
 
         if (
           dir &&
@@ -1929,9 +2122,10 @@ function prompt() {
       }
 
       if (redirectOutput) {
-        const dir = path.dirname(
-          redirectOutput
-        );
+        const dir =
+          path.dirname(
+            redirectOutput
+          );
 
         if (
           dir &&
@@ -1947,10 +2141,13 @@ function prompt() {
           redirectOutput,
           output + "\n"
         );
-      } else if (appendOutput) {
-        const dir = path.dirname(
-          appendOutput
-        );
+      } else if (
+        appendOutput
+      ) {
+        const dir =
+          path.dirname(
+            appendOutput
+          );
 
         if (
           dir &&
@@ -1974,6 +2171,10 @@ function prompt() {
       return;
     }
 
+    // --------------------------------------------------------
+    // type
+    // --------------------------------------------------------
+
     if (
       trimmedCommand.startsWith(
         "type "
@@ -1990,7 +2191,9 @@ function prompt() {
         );
       } else {
         const executablePath =
-          findExecutableInPath(arg);
+          findExecutableInPath(
+            arg
+          );
 
         if (executablePath) {
           console.log(
@@ -2007,12 +2210,20 @@ function prompt() {
       return;
     }
 
+    // --------------------------------------------------------
+    // External command
+    // --------------------------------------------------------
+
     executeSingleCommand(
       trimmedCommand,
       prompt
     );
   });
 }
+
+// ------------------------------------------------------------
+// Start shell
+// ------------------------------------------------------------
 
 loadHistoryFromFile();
 prompt();
