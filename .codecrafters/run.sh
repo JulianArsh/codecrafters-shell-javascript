@@ -9,4 +9,6 @@
 # Exit early if any commands fail
 set -e
 
-exec node app/main.js "$@"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+exec node "$SCRIPT_DIR/app/main.js" "$@"
+
