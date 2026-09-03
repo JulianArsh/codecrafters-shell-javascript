@@ -145,6 +145,28 @@ function completer(line) {
     return [[], line];
   }
   
+  // Filename completion: the user is completing an argument (text after the
+  // last space), not the command name itself.
+  const lastSpaceIndex = line.lastIndexOf(' ');
+  const prefix = line.substring(lastSpaceIndex + 1);
+  
+  try {
+    const files = fs.readdirSync(process.cwd());
+    const matches = files.filter((f) => f.startsWith(prefix));
+    
+    if (matches.length === 1) {
+      lastLine = null;
+      lastMatches = null;
+      // readline splices this back in at the position of `prefix` within `line`
+      return [[matches[0] + ' '], prefix];
+    }
+    
+    // Multiple matches / no matches / nested-directory completion are
+    // handled in later stages.
+  } catch (err) {
+    // e.g. cwd unreadable — fall through to no-op
+  }
+  
   lastLine = null;
   lastMatches = null;
   return [[], line];
