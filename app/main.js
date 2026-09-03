@@ -17,7 +17,11 @@ function loadHistoryFromFile() {
   if (histfile) {
     try {
       if (fs.existsSync(histfile)) {
-        const historyContent = fs.readFileSync(histfile, "utf-8");
+        const historyContent = fs.readFileSync(
+          histfile,
+          "utf-8"
+        );
+
         const lines = historyContent.split("\n");
 
         for (const line of lines) {
@@ -44,13 +48,22 @@ function saveHistoryToFile() {
     try {
       const dir = path.dirname(histfile);
 
-      if (dir && dir !== "." && !fs.existsSync(dir)) {
+      if (
+        dir &&
+        dir !== "." &&
+        !fs.existsSync(dir)
+      ) {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      const historyContent = commandHistory.join("\n") + "\n";
+      const historyContent =
+        commandHistory.join("\n") + "\n";
 
-      fs.writeFileSync(histfile, historyContent, "utf-8");
+      fs.writeFileSync(
+        histfile,
+        historyContent,
+        "utf-8"
+      );
     } catch (err) {
       // Silently fail if we can't write the history file
     }
@@ -58,14 +71,23 @@ function saveHistoryToFile() {
 }
 
 function completer(line) {
-  const builtins = ["cd", "echo", "exit", "pwd", "type", "history"];
+  const builtins = [
+    "cd",
+    "echo",
+    "exit",
+    "pwd",
+    "type",
+    "history",
+  ];
 
   // ------------------------------------------------------------
   // Command completion
   // ------------------------------------------------------------
 
   if (!line.includes(" ")) {
-    let hits = builtins.filter((cmd) => cmd.startsWith(line));
+    let hits = builtins.filter((cmd) =>
+      cmd.startsWith(line)
+    );
 
     const pathEnv = process.env.PATH || "";
     const directories = pathEnv.split(path.delimiter);
@@ -84,7 +106,10 @@ function completer(line) {
             const fullPath = path.join(dir, file);
 
             try {
-              fs.accessSync(fullPath, fs.constants.X_OK);
+              fs.accessSync(
+                fullPath,
+                fs.constants.X_OK
+              );
 
               if (!builtins.includes(file)) {
                 foundExecutables.add(file);
@@ -99,7 +124,10 @@ function completer(line) {
       }
     }
 
-    hits = hits.concat(Array.from(foundExecutables));
+    hits = hits.concat(
+      Array.from(foundExecutables)
+    );
+
     hits.sort();
     hits = [...new Set(hits)];
 
@@ -136,7 +164,8 @@ function completer(line) {
         j++;
       }
 
-      commonPrefix = commonPrefix.substring(0, j);
+      commonPrefix =
+        commonPrefix.substring(0, j);
     }
 
     if (commonPrefix.length > line.length) {
@@ -149,7 +178,8 @@ function completer(line) {
     if (
       lastLine === line &&
       lastMatches &&
-      JSON.stringify(lastMatches) === JSON.stringify(hits)
+      JSON.stringify(lastMatches) ===
+        JSON.stringify(hits)
     ) {
       console.log();
       console.log(hits.join("  "));
@@ -177,14 +207,16 @@ function completer(line) {
   }
 
   // ------------------------------------------------------------
-  // Filename completion
+  // Filename / Directory completion
   // ------------------------------------------------------------
 
   const lastSpaceIndex = line.lastIndexOf(" ");
 
   // Everything after the last space is the filename/path
   // currently being completed.
-  const partialPath = line.substring(lastSpaceIndex + 1);
+  const partialPath = line.substring(
+    lastSpaceIndex + 1
+  );
 
   // Find the final slash.
   //
@@ -193,46 +225,86 @@ function completer(line) {
   //
   // directoryPath = path/to/
   // prefix        = f
-  const lastSlashIndex = partialPath.lastIndexOf("/");
+  const lastSlashIndex =
+    partialPath.lastIndexOf("/");
 
   let directoryPath;
   let prefix;
 
   if (lastSlashIndex !== -1) {
-    directoryPath = partialPath.substring(0, lastSlashIndex + 1);
-    prefix = partialPath.substring(lastSlashIndex + 1);
+    directoryPath =
+      partialPath.substring(
+        0,
+        lastSlashIndex + 1
+      );
+
+    prefix = partialPath.substring(
+      lastSlashIndex + 1
+    );
   } else {
     directoryPath = "";
     prefix = partialPath;
   }
 
   try {
-    // The directory path is relative to the shell's current
-    // working directory.
+    // The directory path is relative to the shell's
+    // current working directory.
     //
     // Example:
     // cwd = /home/user
     // directoryPath = path/to/
     //
-    // searchDirectory = /home/user/path/to/
+    // searchDirectory =
+    // /home/user/path/to/
     const searchDirectory = directoryPath
-      ? path.resolve(process.cwd(), directoryPath)
+      ? path.resolve(
+          process.cwd(),
+          directoryPath
+        )
       : process.cwd();
 
-    const files = fs.readdirSync(searchDirectory);
+    const files = fs.readdirSync(
+      searchDirectory
+    );
 
     // Find entries beginning with the typed prefix.
-    const matches = files.filter((file) => file.startsWith(prefix));
+    const matches = files.filter((file) =>
+      file.startsWith(prefix)
+    );
 
     // This stage only requires exactly one match.
     if (matches.length === 1) {
-      const completedPath = directoryPath + matches[0];
+      const match = matches[0];
+
+      const completedPath =
+        directoryPath + match;
+
+      const fullPath = path.join(
+        searchDirectory,
+        match
+      );
+
+      let isDirectory = false;
+
+      try {
+        isDirectory =
+          fs.statSync(fullPath).isDirectory();
+      } catch (err) {
+        isDirectory = false;
+      }
 
       lastLine = null;
       lastMatches = null;
 
-      // Replace the entire partial path with the completed path
-      // and add the required trailing space.
+      // Directories:
+      //   append "/" with NO trailing space.
+      //
+      // Files:
+      //   append a trailing space.
+      if (isDirectory) {
+        return [[completedPath + "/"], partialPath];
+      }
+
       return [[completedPath + " "], partialPath];
     }
   } catch (err) {
@@ -264,7 +336,11 @@ function findExecutableInPath(command) {
     try {
       if (fs.existsSync(fullPath)) {
         try {
-          fs.accessSync(fullPath, fs.constants.X_OK);
+          fs.accessSync(
+            fullPath,
+            fs.constants.X_OK
+          );
+
           return fullPath;
         } catch (err) {
           continue;
@@ -295,7 +371,11 @@ function parseCommandLine(commandLine) {
   while (i < commandLine.length) {
     const char = commandLine[i];
 
-    if (char === "\\" && !inSingleQuote && inDoubleQuote) {
+    if (
+      char === "\\" &&
+      !inSingleQuote &&
+      inDoubleQuote
+    ) {
       i++;
 
       if (i < commandLine.length) {
@@ -314,17 +394,27 @@ function parseCommandLine(commandLine) {
           i++;
         }
       }
-    } else if (char === "\\" && !inSingleQuote && !inDoubleQuote) {
+    } else if (
+      char === "\\" &&
+      !inSingleQuote &&
+      !inDoubleQuote
+    ) {
       i++;
 
       if (i < commandLine.length) {
         currentArg += commandLine[i];
         i++;
       }
-    } else if (char === "'" && !inDoubleQuote) {
+    } else if (
+      char === "'" &&
+      !inDoubleQuote
+    ) {
       inSingleQuote = !inSingleQuote;
       i++;
-    } else if (char === '"' && !inSingleQuote) {
+    } else if (
+      char === '"' &&
+      !inSingleQuote
+    ) {
       inDoubleQuote = !inDoubleQuote;
       i++;
     } else if (
@@ -689,13 +779,23 @@ function splitByPipe(commandLine) {
   let inSingleQuote = false;
   let inDoubleQuote = false;
 
-  for (let i = 0; i < commandLine.length; i++) {
+  for (
+    let i = 0;
+    i < commandLine.length;
+    i++
+  ) {
     const char = commandLine[i];
 
-    if (char === "'" && !inDoubleQuote) {
+    if (
+      char === "'" &&
+      !inDoubleQuote
+    ) {
       inSingleQuote = !inSingleQuote;
       currentCmd += char;
-    } else if (char === '"' && !inSingleQuote) {
+    } else if (
+      char === '"' &&
+      !inSingleQuote
+    ) {
       inDoubleQuote = !inDoubleQuote;
       currentCmd += char;
     } else if (
@@ -744,7 +844,9 @@ function executeBuiltin(
     }
 
     case "pwd":
-      outputStream.write(process.cwd() + "\n");
+      outputStream.write(
+        process.cwd() + "\n"
+      );
       break;
 
     case "type": {
@@ -783,7 +885,9 @@ function executeBuiltin(
           const historyFilePath = args[1];
 
           try {
-            if (fs.existsSync(historyFilePath)) {
+            if (
+              fs.existsSync(historyFilePath)
+            ) {
               const historyContent =
                 fs.readFileSync(
                   historyFilePath,
@@ -794,9 +898,12 @@ function executeBuiltin(
                 historyContent.split("\n");
 
               for (const line of lines) {
-                const trimmedLine = line.trim();
+                const trimmedLine =
+                  line.trim();
 
-                if (trimmedLine.length > 0) {
+                if (
+                  trimmedLine.length > 0
+                ) {
                   commandHistory.push(
                     trimmedLine
                   );
@@ -821,7 +928,9 @@ function executeBuiltin(
 
           try {
             const dir =
-              path.dirname(historyFilePath);
+              path.dirname(
+                historyFilePath
+              );
 
             if (
               dir &&
@@ -834,7 +943,8 @@ function executeBuiltin(
             }
 
             const historyContent =
-              commandHistory.join("\n") + "\n";
+              commandHistory.join("\n") +
+              "\n";
 
             fs.writeFileSync(
               historyFilePath,
@@ -859,7 +969,9 @@ function executeBuiltin(
 
           try {
             const dir =
-              path.dirname(historyFilePath);
+              path.dirname(
+                historyFilePath
+              );
 
             if (
               dir &&
@@ -876,9 +988,12 @@ function executeBuiltin(
                 lastAppendedIndex
               );
 
-            if (newCommands.length > 0) {
+            if (
+              newCommands.length > 0
+            ) {
               const contentToAppend =
-                newCommands.join("\n") + "\n";
+                newCommands.join("\n") +
+                "\n";
 
               fs.appendFileSync(
                 historyFilePath,
@@ -896,20 +1011,26 @@ function executeBuiltin(
           }
         }
       } else {
-        let limit = commandHistory.length;
+        let limit =
+          commandHistory.length;
 
         if (args.length > 0) {
-          const n = parseInt(args[0], 10);
+          const n = parseInt(
+            args[0],
+            10
+          );
 
           if (!isNaN(n) && n > 0) {
             limit = n;
           }
         }
 
-        const startIndex = Math.max(
-          0,
-          commandHistory.length - limit
-        );
+        const startIndex =
+          Math.max(
+            0,
+            commandHistory.length -
+              limit
+          );
 
         for (
           let i = startIndex;
@@ -929,10 +1050,14 @@ function executeBuiltin(
       let targetDir;
 
       if (args.length === 0) {
-        targetDir = process.env.HOME || "/";
+        targetDir =
+          process.env.HOME || "/";
       } else if (args[0] === "~") {
-        targetDir = process.env.HOME || "/";
-      } else if (args[0].startsWith("~/")) {
+        targetDir =
+          process.env.HOME || "/";
+      } else if (
+        args[0].startsWith("~/")
+      ) {
         targetDir = path.join(
           process.env.HOME || "/",
           args[0].slice(2)
@@ -966,8 +1091,13 @@ function executeBuiltin(
   }
 }
 
-function executePipeline(commandLine, callback) {
-  const commands = splitByPipe(commandLine);
+function executePipeline(
+  commandLine,
+  callback
+) {
+  const commands = splitByPipe(
+    commandLine
+  );
 
   if (commands.length === 0) {
     callback();
@@ -982,15 +1112,20 @@ function executePipeline(commandLine, callback) {
     return;
   }
 
-  const parsedCommands = commands.map((cmd) => {
-    const parsed = parseCommandLine(cmd);
+  const parsedCommands = commands.map(
+    (cmd) => {
+      const parsed =
+        parseCommandLine(cmd);
 
-    return {
-      command: parsed.args[0],
-      args: parsed.args.slice(1),
-      isBuiltin: isBuiltin(parsed.args[0]),
-    };
-  });
+      return {
+        command: parsed.args[0],
+        args: parsed.args.slice(1),
+        isBuiltin: isBuiltin(
+          parsed.args[0]
+        ),
+      };
+    }
+  );
 
   let currentInput = null;
   const processes = [];
@@ -1024,22 +1159,30 @@ function executePipeline(commandLine, callback) {
           currentInput &&
           currentInput.destroy
         ) {
-          currentInput.on("data", () => {});
-          currentInput.on("end", () => {});
+          currentInput.on(
+            "data",
+            () => {}
+          );
+
+          currentInput.on(
+            "end",
+            () => {}
+          );
         }
       } else {
         const chunks = [];
 
-        const outputStream = new Writable({
-          write(
-            chunk,
-            encoding,
-            cb
-          ) {
-            chunks.push(chunk);
-            cb();
-          },
-        });
+        const outputStream =
+          new Writable({
+            write(
+              chunk,
+              encoding,
+              cb
+            ) {
+              chunks.push(chunk);
+              cb();
+            },
+          });
 
         executeBuiltin(
           command,
@@ -1075,8 +1218,12 @@ function executePipeline(commandLine, callback) {
 
       const spawnOptions = {
         stdio: [
-          isFirst ? "inherit" : "pipe",
-          isLast ? "inherit" : "pipe",
+          isFirst
+            ? "inherit"
+            : "pipe",
+          isLast
+            ? "inherit"
+            : "pipe",
           "inherit",
         ],
       };
@@ -1087,12 +1234,18 @@ function executePipeline(commandLine, callback) {
         spawnOptions
       );
 
-      if (currentInput && !isFirst) {
-        currentInput.pipe(proc.stdin);
+      if (
+        currentInput &&
+        !isFirst
+      ) {
+        currentInput.pipe(
+          proc.stdin
+        );
       }
 
       if (!isLast) {
-        currentInput = proc.stdout;
+        currentInput =
+          proc.stdout;
       }
 
       processes.push(proc);
@@ -1129,9 +1282,10 @@ function executeSingleCommand(
   commandLine,
   callback
 ) {
-  const parsed = parseCommandLine(
-    commandLine.trim()
-  );
+  const parsed =
+    parseCommandLine(
+      commandLine.trim()
+    );
 
   const parts = parsed.args;
 
@@ -1180,9 +1334,12 @@ function executeSingleCommand(
       );
 
       outputStream =
-        fs.createWriteStream(null, {
-          fd: outputFd,
-        });
+        fs.createWriteStream(
+          null,
+          {
+            fd: outputFd,
+          }
+        );
     } else if (appendOutput) {
       const dir = path.dirname(
         appendOutput
@@ -1204,9 +1361,12 @@ function executeSingleCommand(
       );
 
       outputStream =
-        fs.createWriteStream(null, {
-          fd: outputFd,
-        });
+        fs.createWriteStream(
+          null,
+          {
+            fd: outputFd,
+          }
+        );
     }
 
     if (redirectError) {
@@ -1308,7 +1468,8 @@ function executeSingleCommand(
       "w"
     );
 
-    spawnOptions.stdio[1] = stdoutFd;
+    spawnOptions.stdio[1] =
+      stdoutFd;
   } else if (appendOutput) {
     const dir = path.dirname(
       appendOutput
@@ -1329,7 +1490,8 @@ function executeSingleCommand(
       "a"
     );
 
-    spawnOptions.stdio[1] = stdoutFd;
+    spawnOptions.stdio[1] =
+      stdoutFd;
   }
 
   if (redirectError) {
@@ -1352,7 +1514,8 @@ function executeSingleCommand(
       "w"
     );
 
-    spawnOptions.stdio[2] = stderrFd;
+    spawnOptions.stdio[2] =
+      stderrFd;
   } else if (appendError) {
     const dir = path.dirname(
       appendError
@@ -1373,7 +1536,8 @@ function executeSingleCommand(
       "a"
     );
 
-    spawnOptions.stdio[2] = stderrFd;
+    spawnOptions.stdio[2] =
+      stderrFd;
   }
 
   const proc = spawn(
@@ -1413,16 +1577,21 @@ function executeSingleCommand(
 
 function prompt() {
   rl.question("$ ", (command) => {
-    const trimmedCommand = command.trim();
+    const trimmedCommand =
+      command.trim();
 
     if (trimmedCommand.length === 0) {
       prompt();
       return;
     }
 
-    commandHistory.push(trimmedCommand);
+    commandHistory.push(
+      trimmedCommand
+    );
 
-    if (trimmedCommand.includes("|")) {
+    if (
+      trimmedCommand.includes("|")
+    ) {
       executePipeline(
         trimmedCommand,
         prompt
@@ -1456,10 +1625,14 @@ function prompt() {
 
     if (
       trimmedCommand === "history" ||
-      trimmedCommand.startsWith("history ")
+      trimmedCommand.startsWith(
+        "history "
+      )
     ) {
       const parsed =
-        parseCommandLine(trimmedCommand);
+        parseCommandLine(
+          trimmedCommand
+        );
 
       const parts = parsed.args;
 
@@ -1643,7 +1816,9 @@ function prompt() {
       trimmedCommand.startsWith("cd ")
     ) {
       const parsed =
-        parseCommandLine(trimmedCommand);
+        parseCommandLine(
+          trimmedCommand
+        );
 
       const parts = parsed.args;
 
@@ -1652,7 +1827,9 @@ function prompt() {
       if (parts.length === 1) {
         targetDir =
           process.env.HOME || "/";
-      } else if (parts[1] === "~") {
+      } else if (
+        parts[1] === "~"
+      ) {
         targetDir =
           process.env.HOME || "/";
       } else if (
@@ -1679,11 +1856,15 @@ function prompt() {
     }
 
     if (
-      trimmedCommand.startsWith("echo ") ||
+      trimmedCommand.startsWith(
+        "echo "
+      ) ||
       trimmedCommand === "echo"
     ) {
       const parsed =
-        parseCommandLine(trimmedCommand);
+        parseCommandLine(
+          trimmedCommand
+        );
 
       const parts = parsed.args;
 
@@ -1794,7 +1975,9 @@ function prompt() {
     }
 
     if (
-      trimmedCommand.startsWith("type ")
+      trimmedCommand.startsWith(
+        "type "
+      )
     ) {
       const arg =
         trimmedCommand
